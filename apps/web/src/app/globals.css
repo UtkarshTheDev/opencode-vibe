@@ -1,0 +1,380 @@
+@import "tailwindcss";
+
+/* Include streamdown's Tailwind classes for code blocks, tables, etc. */
+@source "../node_modules/streamdown/dist/*.js";
+
+/*
+ * Catppuccin Theme for OpenCode
+ * 
+ * Light: Latte
+ * Dark: Mocha
+ * 
+ * https://github.com/catppuccin/catppuccin
+ */
+
+:root {
+  /* Catppuccin Latte (Light) */
+  --radius: 0.625rem;
+
+  /* Base colors */
+  --background: #eff1f5; /* Base */
+  --foreground: #4c4f69; /* Text */
+
+  /* Card/Popover */
+  --card: #e6e9ef; /* Mantle */
+  --card-foreground: #4c4f69; /* Text */
+  --popover: #dce0e8; /* Crust */
+  --popover-foreground: #4c4f69; /* Text */
+
+  /* Primary - Mauve (purple accent) */
+  --primary: #8839ef; /* Mauve */
+  --primary-foreground: #eff1f5; /* Base */
+
+  /* Secondary - Surface */
+  --secondary: #ccd0da; /* Surface 0 */
+  --secondary-foreground: #4c4f69; /* Text */
+
+  /* Muted */
+  --muted: #bcc0cc; /* Surface 1 */
+  --muted-foreground: #6c6f85; /* Subtext 0 */
+
+  /* Accent - Lavender */
+  --accent: #7287fd; /* Lavender */
+  --accent-foreground: #eff1f5; /* Base */
+
+  /* Destructive - Red */
+  --destructive: #d20f39; /* Red */
+
+  /* Borders & Inputs - using Surface 1 for softer borders */
+  --border: #bcc0cc; /* Surface 1 - softer than Surface 2 */
+  --input: #ccd0da; /* Surface 0 */
+  --ring: #8839ef; /* Mauve */
+
+  /* Surface colors for layering */
+  --surface0: #ccd0da;
+  --surface1: #bcc0cc;
+  --surface2: #acb0be;
+  --overlay0: #9ca0b0;
+  --overlay1: #8c8fa1;
+  --overlay2: #7c7f93;
+
+  /* Chart colors - Rainbow */
+  --chart-1: #d20f39; /* Red */
+  --chart-2: #fe640b; /* Peach */
+  --chart-3: #df8e1d; /* Yellow */
+  --chart-4: #40a02b; /* Green */
+  --chart-5: #1e66f5; /* Blue */
+
+  /* Sidebar */
+  --sidebar: #e6e9ef; /* Mantle */
+  --sidebar-foreground: #4c4f69; /* Text */
+  --sidebar-primary: #8839ef; /* Mauve */
+  --sidebar-primary-foreground: #eff1f5; /* Base */
+  --sidebar-accent: #ccd0da; /* Surface 0 */
+  --sidebar-accent-foreground: #4c4f69; /* Text */
+  --sidebar-border: #acb0be; /* Surface 2 */
+  --sidebar-ring: #8839ef; /* Mauve */
+
+  /* Catppuccin accent colors for semantic use */
+  --ctp-rosewater: #dc8a78;
+  --ctp-flamingo: #dd7878;
+  --ctp-pink: #ea76cb;
+  --ctp-mauve: #8839ef;
+  --ctp-red: #d20f39;
+  --ctp-maroon: #e64553;
+  --ctp-peach: #fe640b;
+  --ctp-yellow: #df8e1d;
+  --ctp-green: #40a02b;
+  --ctp-teal: #179299;
+  --ctp-sky: #04a5e5;
+  --ctp-sapphire: #209fb5;
+  --ctp-blue: #1e66f5;
+  --ctp-lavender: #7287fd;
+}
+
+.dark {
+  /* Catppuccin Mocha (Dark) */
+
+  /* Base colors */
+  --background: #1e1e2e; /* Base */
+  --foreground: #cdd6f4; /* Text */
+
+  /* Card/Popover */
+  --card: #181825; /* Mantle */
+  --card-foreground: #cdd6f4; /* Text */
+  --popover: #11111b; /* Crust */
+  --popover-foreground: #cdd6f4; /* Text */
+
+  /* Primary - Mauve (purple accent) */
+  --primary: #cba6f7; /* Mauve */
+  --primary-foreground: #1e1e2e; /* Base */
+
+  /* Secondary - Surface */
+  --secondary: #313244; /* Surface 0 */
+  --secondary-foreground: #cdd6f4; /* Text */
+
+  /* Muted */
+  --muted: #45475a; /* Surface 1 */
+  --muted-foreground: #a6adc8; /* Subtext 0 */
+
+  /* Accent - Lavender */
+  --accent: #b4befe; /* Lavender */
+  --accent-foreground: #1e1e2e; /* Base */
+
+  /* Destructive - Red */
+  --destructive: #f38ba8; /* Red */
+
+  /* Borders & Inputs - using Surface 1 for softer borders */
+  --border: #45475a; /* Surface 1 - softer than Surface 2 */
+  --input: #313244; /* Surface 0 */
+  --ring: #cba6f7; /* Mauve */
+
+  /* Surface colors for layering */
+  --surface0: #313244;
+  --surface1: #45475a;
+  --surface2: #585b70;
+  --overlay0: #6c7086;
+  --overlay1: #7f849c;
+  --overlay2: #9399b2;
+
+  /* Chart colors - Rainbow */
+  --chart-1: #f38ba8; /* Red */
+  --chart-2: #fab387; /* Peach */
+  --chart-3: #f9e2af; /* Yellow */
+  --chart-4: #a6e3a1; /* Green */
+  --chart-5: #89b4fa; /* Blue */
+
+  /* Sidebar */
+  --sidebar: #181825; /* Mantle */
+  --sidebar-foreground: #cdd6f4; /* Text */
+  --sidebar-primary: #cba6f7; /* Mauve */
+  --sidebar-primary-foreground: #1e1e2e; /* Base */
+  --sidebar-accent: #313244; /* Surface 0 */
+  --sidebar-accent-foreground: #cdd6f4; /* Text */
+  --sidebar-border: #585b70; /* Surface 2 */
+  --sidebar-ring: #cba6f7; /* Mauve */
+
+  /* Catppuccin accent colors for semantic use */
+  --ctp-rosewater: #f5e0dc;
+  --ctp-flamingo: #f2cdcd;
+  --ctp-pink: #f5c2e7;
+  --ctp-mauve: #cba6f7;
+  --ctp-red: #f38ba8;
+  --ctp-maroon: #eba0ac;
+  --ctp-peach: #fab387;
+  --ctp-yellow: #f9e2af;
+  --ctp-green: #a6e3a1;
+  --ctp-teal: #94e2d5;
+  --ctp-sky: #89dceb;
+  --ctp-sapphire: #74c7ec;
+  --ctp-blue: #89b4fa;
+  --ctp-lavender: #b4befe;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Catppuccin semantic colors */
+  --color-ctp-rosewater: var(--ctp-rosewater);
+  --color-ctp-flamingo: var(--ctp-flamingo);
+  --color-ctp-pink: var(--ctp-pink);
+  --color-ctp-mauve: var(--ctp-mauve);
+  --color-ctp-red: var(--ctp-red);
+  --color-ctp-maroon: var(--ctp-maroon);
+  --color-ctp-peach: var(--ctp-peach);
+  --color-ctp-yellow: var(--ctp-yellow);
+  --color-ctp-green: var(--ctp-green);
+  --color-ctp-teal: var(--ctp-teal);
+  --color-ctp-sky: var(--ctp-sky);
+  --color-ctp-sapphire: var(--ctp-sapphire);
+  --color-ctp-blue: var(--ctp-blue);
+  --color-ctp-lavender: var(--ctp-lavender);
+
+  /* Surface colors for layering - darker than background */
+  --color-surface0: var(--surface0);
+  --color-surface1: var(--surface1);
+  --color-surface2: var(--surface2);
+  --color-overlay0: var(--overlay0);
+  --color-overlay1: var(--overlay1);
+  --color-overlay2: var(--overlay2);
+
+  /* Mantle/Crust for code blocks - darker than base */
+  --color-mantle: var(--card);
+  --color-crust: var(--popover);
+  --color-text: var(--foreground);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Custom scrollbar - Catppuccin styled */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+/* Selection - Lavender tinted */
+::selection {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* Markdown Tables - Catppuccin themed */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 1rem 0;
+}
+
+/* Responsive - horizontal scroll on overflow */
+@media (max-width: 640px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+/* Table header */
+thead {
+  background: var(--surface0);
+  border-bottom: 2px solid var(--border);
+}
+
+th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--foreground);
+  border-right: 1px solid var(--border);
+}
+
+th:last-child {
+  border-right: none;
+}
+
+/* Table body */
+tbody tr {
+  border-bottom: 1px solid var(--border);
+}
+
+/* Zebra striping - alternating row colors */
+tbody tr:nth-child(odd) {
+  background: var(--background);
+}
+
+tbody tr:nth-child(even) {
+  background: var(--surface0);
+}
+
+/* Hover effect */
+tbody tr:hover {
+  background: var(--muted);
+  transition: background 0.2s ease;
+}
+
+td {
+  padding: 0.75rem 1rem;
+  color: var(--foreground);
+  border-right: 1px solid var(--border);
+}
+
+td:last-child {
+  border-right: none;
+}
+
+/* Markdown Code Blocks - Catppuccin themed */
+
+/* Override Shiki's CSS variables with Catppuccin colors */
+:root {
+  --shiki-light-bg: #dce0e8; /* Latte Crust */
+  --shiki-dark-bg: #11111b; /* Mocha Crust */
+}
+
+/* Inline code */
+code:not(pre code) {
+  background: var(--popover) !important;
+  color: var(--ctp-mauve);
+  padding: 0.125rem 0.375rem;
+  border-radius: calc(var(--radius) * 0.5);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.875em;
+  border: 1px solid var(--surface0);
+}
+
+/* Code blocks - force Catppuccin crust background */
+pre {
+  background: var(--popover) !important;
+  color: var(--foreground);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* Code inside pre (override inline code styles) */
+pre code {
+  background: transparent !important;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  border: none;
+  font-size: inherit;
+}
+
+/* Scrollbar for code blocks - match theme */
+pre::-webkit-scrollbar {
+  height: 8px;
+}
+
+pre::-webkit-scrollbar-track {
+  background: var(--surface0);
+  border-radius: 4px;
+}
+
+pre::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+pre::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
