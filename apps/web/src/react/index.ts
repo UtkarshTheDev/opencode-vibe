@@ -10,6 +10,12 @@ export {
 	type SSEEventCallback,
 	type SSEOptions,
 } from "./use-sse"
+export {
+	OpenCodeProvider,
+	useOpenCode,
+	type OpenCodeContextValue,
+	type OpenCodeProviderProps,
+} from "./provider"
 export { useSession } from "./use-session"
 export { useCreateSession } from "./use-create-session"
 export { useProvider } from "./use-provider"

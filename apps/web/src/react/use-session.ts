@@ -1,16 +1,15 @@
 /**
- * useSession - Fetch and subscribe to real-time session updates
+ * useSession - Hook for accessing session data with real-time updates
  *
- * Fetches a session by ID and subscribes to SSE for real-time updates.
- * Handles loading/error states and automatically re-fetches on SSE updates.
+ * Combines Zustand store with SSE subscriptions to provide reactive
+ * session data. Subscribes to session.updated events and automatically
+ * updates the store when events arrive.
  *
- * Usage:
+ * @example
  * ```tsx
  * function SessionView({ sessionId }: { sessionId: string }) {
- *   const { session, loading, error } = useSession(sessionId)
+ *   const session = useSession(sessionId)
  *
- *   if (loading) return <div>Loading...</div>
- *   if (error) return <div>Error: {error.message}</div>
  *   if (!session) return <div>Session not found</div>
  *
  *   return <div>{session.title}</div>
@@ -18,112 +17,38 @@
  * ```
  */
 
-import { useEffect, useState } from "react"
-import type { Session } from "@opencode-ai/sdk/client"
-import { createClient } from "../core/client"
+import { useEffect } from "react"
 import { useSSE } from "./use-sse"
-
-interface UseSessionReturn {
-	session: Session | null
-	loading: boolean
-	error: Error | null
-}
+import { useOpencodeStore, type Session } from "./store"
 
 /**
- * Fetch a session by ID and subscribe to real-time updates via SSE
+ * useSession - Get session from store and subscribe to updates
  *
- * @param sessionId - The session ID to fetch
- * @param directory - Optional directory to scope the request to a specific project
- * @returns Session data, loading state, and error state
- *
- * @example Basic usage
- * ```tsx
- * function SessionDetail({ id }: { id: string }) {
- *   const { session, loading, error } = useSession(id)
- *
- *   if (loading) return <Spinner />
- *   if (error) return <ErrorBanner error={error} />
- *   if (!session) return null
- *
- *   return (
- *     <div>
- *       <h1>{session.title}</h1>
- *       <p>Created: {new Date(session.time.created).toLocaleString()}</p>
- *     </div>
- *   )
- * }
- * ```
- *
- * @example With directory scoping
- * ```tsx
- * function SessionDetail({ id, dir }: { id: string; dir: string }) {
- *   const { session, loading, error } = useSession(id, dir)
- *   // ...
- * }
- * ```
+ * @param sessionId - ID of the session to retrieve
+ * @returns Session object or undefined if not found
  */
-export function useSession(sessionId: string, directory?: string): UseSessionReturn {
-	const [session, setSession] = useState<Session | null>(null)
-	const [loading, setLoading] = useState(true)
-	const [error, setError] = useState<Error | null>(null)
+export function useSession(sessionId: string): Session | undefined {
 	const { subscribe } = useSSE()
 
-	// Initial fetch
-	useEffect(() => {
-		let cancelled = false
+	// Get session from store (reactive - updates when store changes)
+	const session = useOpencodeStore((state) => state.getSession(sessionId))
 
-		async function fetchSession() {
-			try {
-				setLoading(true)
-				setError(null)
-
-				const client = createClient(directory)
-				const result = await client.session.get({
-					path: { id: sessionId },
-				})
-
-				if (cancelled) return
-
-				// The SDK returns { data: Session, error: undefined } on success
-				if (result.data) {
-					setSession(result.data)
-				} else if (result.error) {
-					// BadRequestError | NotFoundError don't have message property
-					// Use generic error message for now
-					throw new Error("Failed to fetch session")
-				}
-			} catch (err) {
-				if (cancelled) return
-				setError(err instanceof Error ? err : new Error(String(err)))
-			} finally {
-				if (!cancelled) {
-					setLoading(false)
-				}
-			}
-		}
-
-		fetchSession()
-
-		return () => {
-			cancelled = true
-		}
-	}, [sessionId, directory])
-
-	// Subscribe to SSE updates for this session
+	// Subscribe to session.updated events
 	useEffect(() => {
 		const unsubscribe = subscribe("session.updated", (event) => {
-			// event.payload.type === "session.updated"
-			// event.payload.properties.info contains the updated Session
-			if (
-				event.payload.type === "session.updated" &&
-				event.payload.properties.info.id === sessionId
-			) {
-				setSession(event.payload.properties.info)
+			// Safely extract properties from event payload
+			const props = event.payload?.properties as { info?: Session } | undefined
+			const sessionData = props?.info
+			if (!sessionData) return
+
+			// Only update if this is our session
+			if (sessionData.id === sessionId) {
+				useOpencodeStore.getState().addSession(sessionData)
 			}
 		})
 
 		return unsubscribe
 	}, [sessionId, subscribe])
 
-	return { session, loading, error }
+	return session
 }
