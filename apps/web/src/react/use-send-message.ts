@@ -1,5 +1,7 @@
 import { useCallback, useState, useMemo } from "react"
 import { createClient } from "@/core/client"
+import type { Prompt } from "@/types/prompt"
+import { convertToApiParts } from "@/lib/prompt-api"
 
 export interface ModelSelection {
 	providerID: string
@@ -12,13 +14,16 @@ export interface UseSendMessageOptions {
 }
 
 export interface UseSendMessageReturn {
-	sendMessage: (text: string, model?: ModelSelection) => Promise<void>
+	sendMessage: (parts: Prompt, model?: ModelSelection) => Promise<void>
 	isLoading: boolean
 	error?: Error
 }
 
 /**
  * Hook for sending messages to an OpenCode session.
+ *
+ * Accepts rich prompt parts (text, file attachments) and converts them
+ * to API format before sending.
  *
  * @example
  * ```tsx
@@ -27,7 +32,11 @@ export interface UseSendMessageReturn {
  *   directory: "/path/to/project"
  * })
  *
- * await sendMessage("Hello world")
+ * const parts: Prompt = [
+ *   { type: "text", content: "Fix bug in ", start: 0, end: 11 },
+ *   { type: "file", path: "src/auth.ts", content: "@src/auth.ts", start: 11, end: 23 }
+ * ]
+ * await sendMessage(parts)
  * ```
  */
 export function useSendMessage({
@@ -41,11 +50,9 @@ export function useSendMessage({
 	const client = useMemo(() => createClient(directory), [directory])
 
 	const sendMessage = useCallback(
-		async (text: string, model?: ModelSelection) => {
-			const trimmedText = text.trim()
-
+		async (parts: Prompt, model?: ModelSelection) => {
 			// Don't send empty messages
-			if (!trimmedText) {
+			if (parts.length === 0) {
 				return
 			}
 
@@ -53,10 +60,13 @@ export function useSendMessage({
 			setError(undefined)
 
 			try {
+				// Convert client parts to API format
+				const apiParts = convertToApiParts(parts, directory || "")
+
 				await client.session.prompt({
 					path: { id: sessionId },
 					body: {
-						parts: [{ type: "text", text: trimmedText }],
+						parts: apiParts,
 						model: model
 							? {
 									providerID: model.providerID,
@@ -73,7 +83,7 @@ export function useSendMessage({
 				setIsLoading(false)
 			}
 		},
-		[client, sessionId],
+		[client, sessionId, directory],
 	)
 
 	return {

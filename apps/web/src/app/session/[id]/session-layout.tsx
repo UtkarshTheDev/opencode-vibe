@@ -3,11 +3,13 @@
 import { useEffect } from "react"
 import Link from "next/link"
 import type { UIMessage } from "ai"
-import { OpenCodeProvider, useSession, useMessages } from "@/react"
+import { OpenCodeProvider, useSession, useMessages, useSendMessage } from "@/react"
 import { useOpencodeStore } from "@/react/store"
 import { NewSessionButton } from "./new-session-button"
 import { SessionMessages } from "./session-messages"
+import { PromptInput } from "@/components/prompt"
 import type { Session } from "@opencode-ai/sdk/client"
+import type { Prompt } from "@/types/prompt"
 
 interface SessionLayoutProps {
 	session: Session
@@ -49,6 +51,14 @@ function SessionContent({
 	// Get reactive messages from store
 	const storeMessages = useMessages(sessionId)
 
+	// Send message hook
+	const { sendMessage, isLoading } = useSendMessage({ sessionId, directory })
+
+	// Handle prompt submission
+	const handleSubmit = async (parts: Prompt) => {
+		await sendMessage(parts)
+	}
+
 	return (
 		<>
 			{/* Header - fixed height, doesn't scroll */}
@@ -85,6 +95,18 @@ function SessionContent({
 					initialMessages={initialMessages}
 				/>
 			</main>
+
+			{/* Prompt input - fixed at bottom */}
+			<footer className="shrink-0 border-t border-border/50 bg-background">
+				<div className="max-w-4xl mx-auto px-4 py-3">
+					<PromptInput
+						sessionId={sessionId}
+						onSubmit={handleSubmit}
+						disabled={isLoading}
+						placeholder="Type a message... Use @ for files, / for commands"
+					/>
+				</div>
+			</footer>
 		</>
 	)
 }

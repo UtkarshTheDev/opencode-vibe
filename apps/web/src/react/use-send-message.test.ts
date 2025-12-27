@@ -10,6 +10,7 @@ import { renderHook, waitFor } from "@testing-library/react"
 import { describe, expect, test, mock, beforeEach } from "bun:test"
 import { useSendMessage } from "./use-send-message"
 import { createClient } from "@/core/client"
+import type { Prompt } from "@/types/prompt"
 
 // Mock the client module
 mock.module("@/core/client", () => ({
@@ -35,7 +36,7 @@ describe("useSendMessage", () => {
 		expect(result.current.error).toBeUndefined()
 	})
 
-	test("calls client.session.prompt with correct parameters", async () => {
+	test("converts prompt parts to API format and sends", async () => {
 		const mockPrompt = mock(async () => ({ data: {}, error: undefined }))
 		const mockClient = {
 			session: { prompt: mockPrompt },
@@ -48,15 +49,40 @@ describe("useSendMessage", () => {
 			useSendMessage({ sessionId: "ses_123", directory: "/test" }),
 		)
 
-		await result.current.sendMessage("Hello world")
+		const parts: Prompt = [
+			{ type: "text", content: "Fix bug in ", start: 0, end: 11 },
+			{
+				type: "file",
+				path: "src/auth.ts",
+				content: "@src/auth.ts",
+				start: 11,
+				end: 23,
+			},
+		]
+		await result.current.sendMessage(parts)
 
 		expect(mockPrompt).toHaveBeenCalledTimes(1)
-		expect(mockPrompt).toHaveBeenCalledWith({
-			path: { id: "ses_123" },
-			body: {
-				parts: [{ type: "text", text: "Hello world" }],
-			},
-		})
+		// Verify API format conversion
+		expect(mockPrompt).toHaveBeenCalledWith(
+			expect.objectContaining({
+				path: { id: "ses_123" },
+				body: expect.objectContaining({
+					parts: expect.arrayContaining([
+						expect.objectContaining({
+							type: "text",
+							text: "Fix bug in ",
+							id: expect.any(String),
+						}),
+						expect.objectContaining({
+							type: "file",
+							mime: "text/plain",
+							url: "file:///test/src/auth.ts",
+							filename: "auth.ts",
+						}),
+					]),
+				}),
+			}),
+		)
 	})
 
 	test("sets isLoading to true during send, false after", async () => {
@@ -75,7 +101,8 @@ describe("useSendMessage", () => {
 
 		expect(result.current.isLoading).toBe(false)
 
-		const sendPromise = result.current.sendMessage("Test")
+		const parts: Prompt = [{ type: "text", content: "Test", start: 0, end: 4 }]
+		const sendPromise = result.current.sendMessage(parts)
 
 		// Should be loading immediately
 		await waitFor(() => {
@@ -104,9 +131,10 @@ describe("useSendMessage", () => {
 
 		const { result } = renderHook(() => useSendMessage({ sessionId: "ses_123" }))
 
+		const parts: Prompt = [{ type: "text", content: "Test", start: 0, end: 4 }]
 		// Catch the error since sendMessage re-throws it
 		try {
-			await result.current.sendMessage("Test")
+			await result.current.sendMessage(parts)
 		} catch (err) {
 			// Expected to throw
 		}
@@ -116,7 +144,7 @@ describe("useSendMessage", () => {
 		})
 	})
 
-	test("trims whitespace from input before sending", async () => {
+	test("handles empty prompt array", async () => {
 		const mockPrompt = mock(async () => ({ data: {}, error: undefined }))
 		const mockClient = {
 			session: { prompt: mockPrompt },
@@ -127,29 +155,8 @@ describe("useSendMessage", () => {
 
 		const { result } = renderHook(() => useSendMessage({ sessionId: "ses_123" }))
 
-		await result.current.sendMessage("  Hello world  ")
-
-		expect(mockPrompt).toHaveBeenCalledWith({
-			path: { id: "ses_123" },
-			body: {
-				parts: [{ type: "text", text: "Hello world" }],
-			},
-		})
-	})
-
-	test("does not send empty or whitespace-only messages", async () => {
-		const mockPrompt = mock(async () => ({ data: {}, error: undefined }))
-		const mockClient = {
-			session: { prompt: mockPrompt },
-		}
-		mock.module("@/core/client", () => ({
-			createClient: mock(() => mockClient),
-		}))
-
-		const { result } = renderHook(() => useSendMessage({ sessionId: "ses_123" }))
-
-		await result.current.sendMessage("")
-		await result.current.sendMessage("   ")
+		const emptyParts: Prompt = []
+		await result.current.sendMessage(emptyParts)
 
 		expect(mockPrompt).toHaveBeenCalledTimes(0)
 	})
@@ -170,13 +177,14 @@ describe("useSendMessage", () => {
 			{ initialProps: { directory: "/dir1" } },
 		)
 
-		await result.current.sendMessage("Test 1")
+		const parts: Prompt = [{ type: "text", content: "Test", start: 0, end: 4 }]
+		await result.current.sendMessage(parts)
 		expect(createClientMock).toHaveBeenCalledWith("/dir1")
 
 		// Change directory
 		rerender({ directory: "/dir2" })
 
-		await result.current.sendMessage("Test 2")
+		await result.current.sendMessage(parts)
 		expect(createClientMock).toHaveBeenCalledWith("/dir2")
 	})
 })
