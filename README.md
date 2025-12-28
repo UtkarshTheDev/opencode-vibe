@@ -11,6 +11,8 @@
 
 Next.js 16 rebuild of the OpenCode web application. Real-time chat UI with streaming message display, SSE sync, and React Server Components.
 
+> **Warning:** This project uses Next.js 16 canary - bleeding edge, expect rough edges. Catppuccin-themed because we're not savages.
+
 ## Quick Start
 
 ### Prerequisites
@@ -62,6 +64,17 @@ This starts the Next.js dev server on **port 8423**.
 Navigate to: **http://localhost:8423**
 
 You should see the OpenCode web interface with your sessions.
+
+---
+
+## Features
+
+- **Real-time streaming** - Messages stream in as the AI generates them
+- **SSE sync** - All updates pushed via Server-Sent Events
+- **Slash commands** - Type `/` for actions like `/fix`, `/test`, `/refactor`
+- **File references** - Type `@` to fuzzy-search and attach files as context
+- **Catppuccin theme** - Latte (light) / Mocha (dark) with proper syntax highlighting
+- **Session management** - Create, switch, and browse conversation history
 
 ---
 
@@ -119,12 +132,6 @@ NEXT_PUBLIC_OPENCODE_DIRECTORY=/path/to/your/project
 
 ```bash
 opencode serve -p 5000
-```
-
-Then update your `.env.local`:
-
-```bash
-NEXT_PUBLIC_OPENCODE_URL=http://localhost:5000
 ```
 
 Then update your `.env.local`:
