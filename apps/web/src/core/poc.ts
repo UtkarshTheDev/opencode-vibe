@@ -55,11 +55,12 @@ async function main() {
 
 		// Current project
 		const project = await client.project.current()
-		console.log(`\n📁 Current project: ${project.data?.path ?? "none"}`)
+		console.log(`\n📁 Current project: ${project.data?.worktree ?? "none"}`)
 
 		// Config
 		const config = await client.config.get()
-		console.log(`\n⚙️  Default model: ${config.data?.model?.default ?? "not set"}`)
+		const modelConfig = config.data?.model as { default?: string } | undefined
+		console.log(`\n⚙️  Default model: ${modelConfig?.default ?? "not set"}`)
 
 		console.log("\n✅ SDK connection works!\n")
 	} catch (err) {

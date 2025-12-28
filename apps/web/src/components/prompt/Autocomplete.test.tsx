@@ -32,11 +32,12 @@ describe("Autocomplete", () => {
 			expect(container.firstChild).toBe(null)
 		})
 
-		it("returns null when items is empty", () => {
+		it("shows empty state message when items is empty", () => {
 			const { container } = render(
 				<Autocomplete type="file" items={[]} selectedIndex={0} onSelect={vi.fn()} />,
 			)
-			expect(container.firstChild).toBe(null)
+			// Component now shows "No files found" instead of returning null
+			expect(container.textContent).toContain("No files found")
 		})
 	})
 
@@ -70,19 +71,17 @@ describe("Autocomplete", () => {
 				<Autocomplete type="file" items={files} selectedIndex={0} onSelect={vi.fn()} />,
 			)
 
-			// First item should be highlighted
+			// First item should be highlighted with accent background
 			const items = container.querySelectorAll("button")
-			expect(items[0]?.className).toContain("bg-blue-50")
-			expect(items[0]?.className).toContain("dark:bg-blue-900/20")
-			expect(items[1]?.className).not.toContain("bg-blue-50")
+			expect(items[0]?.className).toContain("bg-accent")
+			expect(items[1]?.className).not.toContain("bg-accent text-accent-foreground")
 
 			// Change selection
 			rerender(<Autocomplete type="file" items={files} selectedIndex={1} onSelect={vi.fn()} />)
 
 			// Now second item should be highlighted
 			const newItems = container.querySelectorAll("button")
-			expect(newItems[1]?.className).toContain("bg-blue-50")
-			expect(newItems[0]?.className).not.toContain("bg-blue-50")
+			expect(newItems[1]?.className).toContain("bg-accent")
 		})
 
 		it("calls onSelect when file is clicked", () => {
@@ -157,8 +156,7 @@ describe("Autocomplete", () => {
 			)
 
 			const items = container.querySelectorAll("button")
-			expect(items[1]?.className).toContain("bg-blue-50")
-			expect(items[1]?.className).toContain("dark:bg-blue-900/20")
+			expect(items[1]?.className).toContain("bg-accent")
 
 			// Change selection to first
 			rerender(
@@ -166,8 +164,7 @@ describe("Autocomplete", () => {
 			)
 
 			const newItems = container.querySelectorAll("button")
-			expect(newItems[1]?.className).not.toContain("bg-blue-50")
-			expect(newItems[0]?.className).toContain("bg-blue-50")
+			expect(newItems[0]?.className).toContain("bg-accent")
 		})
 
 		it("calls onSelect with command object when clicked", () => {
@@ -228,13 +225,13 @@ describe("Autocomplete", () => {
 			expect(dropdown?.className).toContain("overflow-auto")
 		})
 
-		it("has dark mode background classes", () => {
+		it("has popover background classes", () => {
 			const { container } = render(
 				<Autocomplete type="file" items={["file.ts"]} selectedIndex={0} onSelect={vi.fn()} />,
 			)
 
 			const dropdown = container.querySelector("div")
-			expect(dropdown?.className).toContain("dark:bg-gray-900")
+			expect(dropdown?.className).toContain("bg-popover")
 		})
 	})
 })

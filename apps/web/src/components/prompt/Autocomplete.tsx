@@ -10,6 +10,8 @@ interface AutocompleteProps {
 	items: (string | SlashCommand)[]
 	selectedIndex: number
 	onSelect: (item: string | SlashCommand) => void
+	visible?: boolean
+	isLoading?: boolean
 }
 
 /**
@@ -19,29 +21,47 @@ interface AutocompleteProps {
  * @param items - Array of file paths (strings) or SlashCommand objects
  * @param selectedIndex - Index of currently selected item (for keyboard navigation)
  * @param onSelect - Callback when item is clicked
+ * @param visible - Whether the autocomplete should be shown
+ * @param isLoading - Whether results are loading
  *
- * @returns Dropdown UI or null if type is null or items empty
+ * @returns Dropdown UI or null if not visible
  */
-export function Autocomplete({ type, items, selectedIndex, onSelect }: AutocompleteProps) {
-	// Don't render if no type or no items
-	if (!type || items.length === 0) return null
+export function Autocomplete({
+	type,
+	items,
+	selectedIndex,
+	onSelect,
+	visible = true,
+	isLoading = false,
+}: AutocompleteProps) {
+	// Don't render if not visible or no type
+	if (!visible || !type) return null
+
+	// Show loading state or empty state
+	if (items.length === 0) {
+		return (
+			<div className="absolute bottom-full left-0 right-0 mb-2 bg-popover border border-border rounded-lg shadow-lg p-3 text-sm text-muted-foreground">
+				{isLoading ? "Searching..." : type === "file" ? "No files found" : "No commands found"}
+			</div>
+		)
+	}
 
 	return (
-		<div className="absolute bottom-full left-0 right-0 mb-2 max-h-80 overflow-auto bg-white dark:bg-gray-900 border rounded-lg shadow-lg">
+		<div className="absolute bottom-full left-0 right-0 mb-2 max-h-80 overflow-auto bg-popover border border-border rounded-lg shadow-lg z-50">
 			{type === "file" && (
-				<div role="listbox">
+				<div role="listbox" className="py-1">
 					{(items as string[]).map((path, i) => (
 						<button
 							key={path}
 							type="button"
-							className={`flex items-center gap-2 px-3 py-2 cursor-pointer w-full text-left ${
-								i === selectedIndex ? "bg-blue-50 dark:bg-blue-900/20" : ""
+							className={`flex items-center gap-2 px-3 py-2 cursor-pointer w-full text-left text-sm hover:bg-accent ${
+								i === selectedIndex ? "bg-accent text-accent-foreground" : ""
 							}`}
 							onClick={() => onSelect(path)}
 							role="option"
 							aria-selected={i === selectedIndex}
 						>
-							<span className="text-gray-500">{getDirectory(path)}</span>
+							<span className="text-muted-foreground">{getDirectory(path)}</span>
 							<span className="font-medium">{getFilename(path)}</span>
 						</button>
 					))}
@@ -49,13 +69,13 @@ export function Autocomplete({ type, items, selectedIndex, onSelect }: Autocompl
 			)}
 
 			{type === "command" && (
-				<div role="listbox">
+				<div role="listbox" className="py-1">
 					{(items as SlashCommand[]).map((cmd, i) => (
 						<button
 							key={cmd.id}
 							type="button"
-							className={`flex items-center justify-between px-3 py-2 cursor-pointer w-full text-left ${
-								i === selectedIndex ? "bg-blue-50 dark:bg-blue-900/20" : ""
+							className={`flex items-center justify-between px-3 py-2 cursor-pointer w-full text-left text-sm hover:bg-accent ${
+								i === selectedIndex ? "bg-accent text-accent-foreground" : ""
 							}`}
 							onClick={() => onSelect(cmd)}
 							role="option"
@@ -63,16 +83,18 @@ export function Autocomplete({ type, items, selectedIndex, onSelect }: Autocompl
 						>
 							<div className="flex items-center gap-2">
 								<span className="font-medium">/{cmd.trigger}</span>
-								{cmd.description && <span className="text-gray-500">{cmd.description}</span>}
+								{cmd.description && (
+									<span className="text-muted-foreground">{cmd.description}</span>
+								)}
 							</div>
 							<div className="flex items-center gap-2">
 								{cmd.type === "custom" && (
-									<span className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
-										custom
-									</span>
+									<span className="text-xs bg-muted px-1.5 py-0.5 rounded">custom</span>
 								)}
 								{cmd.keybind && (
-									<span className="text-xs text-gray-400">{formatKeybind(cmd.keybind)}</span>
+									<span className="text-xs text-muted-foreground">
+										{formatKeybind(cmd.keybind)}
+									</span>
 								)}
 							</div>
 						</button>

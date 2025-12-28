@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState, useRef, useCallback } from "react"
 import type { UIMessage, ChatStatus } from "ai"
-import { useSSE, useSendMessage, type ModelSelection } from "@/react"
+import { useSSE } from "@/react"
 import { transformMessages, type OpenCodeMessage } from "@/lib/transform-messages"
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message"
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai-elements/tool"
@@ -13,17 +13,7 @@ import {
 	ConversationScrollButton,
 	ConversationEmptyState,
 } from "@/components/ai-elements/conversation"
-import {
-	PromptInput,
-	PromptInputBody,
-	PromptInputTextarea,
-	PromptInputFooter,
-	PromptInputSubmit,
-	PromptInputTools,
-	type PromptInputMessage,
-} from "@/components/ai-elements/prompt-input"
 import { Loader } from "@/components/ai-elements/loader"
-import { ModelSelector } from "./model-selector"
 
 /**
  * SSE event payload shapes (from OpenCode API)
@@ -53,24 +43,29 @@ interface SessionMessagesProps {
 	directory?: string
 	initialMessages: UIMessage[]
 	onMessagesChange?: (messages: OpenCodeMessage[]) => void
+	/** External status from parent (e.g., when sending a message) */
+	status?: ChatStatus
 }
 
 /**
  * Client component for session messages with real-time SSE updates.
  * Handles race conditions where parts may arrive before their parent message.
+ *
+ * This component is DISPLAY ONLY - input handling is done by the parent via PromptInput.
  */
-export function SessionMessages({ sessionId, directory, initialMessages }: SessionMessagesProps) {
+export function SessionMessages({
+	sessionId,
+	directory,
+	initialMessages,
+	status: externalStatus,
+}: SessionMessagesProps) {
 	const [_rawMessages, setRawMessages] = useState<OpenCodeMessage[]>([])
 	const [messages, setMessages] = useState<UIMessage[]>(initialMessages)
-	const [input, setInput] = useState("")
-	const [selectedModel, setSelectedModel] = useState<ModelSelection | undefined>(undefined)
-	const [status, setStatus] = useState<ChatStatus>("ready")
+	const [internalStatus, setInternalStatus] = useState<ChatStatus>("ready")
 	const { subscribe } = useSSE()
-	const {
-		sendMessage,
-		isLoading: isSending,
-		error: sendError,
-	} = useSendMessage({ sessionId, directory })
+
+	// Use external status if provided, otherwise use internal
+	const status = externalStatus ?? internalStatus
 
 	// Buffer for parts that arrive before their parent message
 	const pendingPartsRef = useRef<Map<string, PartInfo[]>>(new Map())
@@ -134,7 +129,7 @@ export function SessionMessages({ sessionId, directory, initialMessages }: Sessi
 
 			// Assistant message means we're streaming
 			if (info.role === "assistant") {
-				setStatus("streaming")
+				setInternalStatus("streaming")
 			}
 
 			// Add or update message
@@ -221,7 +216,7 @@ export function SessionMessages({ sessionId, directory, initialMessages }: Sessi
 			if (props?.sessionID !== sessionId) return
 
 			if (props.status?.running === false) {
-				setStatus("ready")
+				setInternalStatus("ready")
 			}
 		})
 
@@ -234,7 +229,7 @@ export function SessionMessages({ sessionId, directory, initialMessages }: Sessi
 
 			const props = event.payload?.properties as { info?: { id?: string } } | undefined
 			if (props?.info?.id === sessionId) {
-				setStatus("ready")
+				setInternalStatus("ready")
 			}
 		})
 
@@ -245,38 +240,6 @@ export function SessionMessages({ sessionId, directory, initialMessages }: Sessi
 			unsubscribeSessionUpdated()
 		}
 	}, [sessionId, normalizedDirectory, subscribe, applyPendingParts])
-
-	const handleSubmit = async (message: PromptInputMessage) => {
-		if (!message.text?.trim() || status !== "ready") return
-
-		setInput("")
-		setStatus("submitted")
-
-		try {
-			await sendMessage(message.text, selectedModel)
-			// SSE will handle the response streaming
-		} catch (error) {
-			console.error("Failed to send message:", error)
-			setStatus("error")
-			// Reset after a moment
-			setTimeout(() => setStatus("ready"), 2000)
-		}
-	}
-
-	// Sync local status with hook loading state
-	useEffect(() => {
-		if (isSending && status === "ready") {
-			setStatus("submitted")
-		}
-	}, [isSending, status])
-
-	// Handle send errors
-	useEffect(() => {
-		if (sendError) {
-			setStatus("error")
-			setTimeout(() => setStatus("ready"), 2000)
-		}
-	}, [sendError])
 
 	const isLoading = status === "submitted" || status === "streaming"
 
@@ -365,32 +328,6 @@ export function SessionMessages({ sessionId, directory, initialMessages }: Sessi
 				)}
 				<ConversationScrollButton />
 			</Conversation>
-
-			{/* Fixed input at bottom - pb includes safe area for iOS Safari */}
-			<div className="shrink-0 bg-background px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
-				<div className="max-w-4xl mx-auto">
-					<PromptInput onSubmit={handleSubmit}>
-						<PromptInputBody>
-							<PromptInputTextarea
-								placeholder={isLoading ? "Waiting for response..." : "Send a message..."}
-								value={input}
-								onChange={(e) => setInput(e.target.value)}
-								disabled={isLoading}
-							/>
-						</PromptInputBody>
-						<PromptInputFooter>
-							<PromptInputTools>
-								<ModelSelector
-									value={selectedModel}
-									onValueChange={setSelectedModel}
-									directory={directory}
-								/>
-							</PromptInputTools>
-							<PromptInputSubmit disabled={!input.trim() && status === "ready"} status={status} />
-						</PromptInputFooter>
-					</PromptInput>
-				</div>
-			</div>
 		</div>
 	)
 }

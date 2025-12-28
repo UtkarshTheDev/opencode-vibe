@@ -11,6 +11,27 @@ import { describe, expect, test, mock, beforeEach } from "bun:test"
 import { useProviders } from "./use-providers"
 import { createClient } from "@/core/client"
 
+// Mock providers in SDK format (models as dictionary)
+const mockProvidersSDK = [
+	{
+		id: "anthropic",
+		name: "Anthropic",
+		models: {
+			"claude-sonnet-4-20250514": { name: "Claude Sonnet 4" },
+			"claude-opus-4-20250514": { name: "Claude Opus 4" },
+		},
+	},
+	{
+		id: "openai",
+		name: "OpenAI",
+		models: {
+			"gpt-4": { name: "GPT-4" },
+			"gpt-3.5-turbo": { name: "GPT-3.5 Turbo" },
+		},
+	},
+]
+
+// Expected providers after transformation (models as array)
 const mockProviders = [
 	{
 		id: "anthropic",
@@ -32,15 +53,8 @@ const mockProviders = [
 
 // Mock the client module
 const mockListFn = mock(async () => ({
-	data: { all: mockProviders, default: mockProviders[0], connected: [] },
+	data: { all: mockProvidersSDK, default: mockProvidersSDK[0], connected: [] },
 	error: undefined,
-}))
-mock.module("@/core/client", () => ({
-	createClient: mock(() => ({
-		provider: {
-			list: mockListFn,
-		},
-	})),
 }))
 mock.module("@/core/client", () => ({
 	createClient: mock(() => ({

@@ -8,6 +8,7 @@ import { useOpencodeStore } from "@/react/store"
 import { NewSessionButton } from "./new-session-button"
 import { SessionMessages } from "./session-messages"
 import { PromptInput } from "@/components/prompt"
+import { OpenCodeLogo } from "@/components/opencode-logo"
 import type { Session } from "@opencode-ai/sdk/client"
 import type { Prompt } from "@/types/prompt"
 
@@ -67,9 +68,11 @@ function SessionContent({
 					<div className="flex items-center justify-between">
 						<Link
 							href="/"
-							className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+							className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
 						>
-							← Back
+							<OpenCodeLogo width={100} height={18} className="text-foreground" />
+							<span className="text-foreground/60 text-xs font-medium">|</span>
+							<span className="text-foreground font-semibold text-sm tracking-wide">VIBE</span>
 						</Link>
 						<div className="flex items-center gap-4">
 							{/* Show message count from useMessages hook */}
@@ -93,11 +96,12 @@ function SessionContent({
 					sessionId={sessionId}
 					directory={directory}
 					initialMessages={initialMessages}
+					status={isLoading ? "submitted" : undefined}
 				/>
 			</main>
 
 			{/* Prompt input - fixed at bottom */}
-			<footer className="shrink-0 border-t border-border/50 bg-background">
+			<footer className="shrink-0 bg-background">
 				<div className="max-w-4xl mx-auto px-4 py-3">
 					<PromptInput
 						sessionId={sessionId}

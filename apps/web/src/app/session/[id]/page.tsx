@@ -35,11 +35,10 @@ async function getSession(id: string, directory?: string): Promise<Session | nul
 }
 
 /**
- * Fetch messages for a session (cached)
+ * Fetch messages for a session (NOT cached - messages are real-time and can be very large)
+ * SSE handles real-time updates after initial load
  */
 async function getMessages(id: string, directory?: string) {
-	"use cache"
-
 	try {
 		const client = createClient(directory)
 		const result = await client.session.messages({ path: { id } })

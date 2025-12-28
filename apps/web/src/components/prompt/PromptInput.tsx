@@ -23,7 +23,8 @@
 
 "use client"
 
-import { useRef, useEffect, useCallback, type KeyboardEvent } from "react"
+import { useRef, useEffect, useCallback, type KeyboardEvent, useState } from "react"
+import { CornerDownLeftIcon, Loader2Icon } from "lucide-react"
 import { usePromptStore } from "@/stores/prompt-store"
 import {
 	parseFromDOM,
@@ -36,6 +37,8 @@ import {
 import { useFileSearch } from "@/react/use-file-search"
 import { useCommands } from "@/react/use-commands"
 import { Autocomplete } from "./Autocomplete"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import type { Prompt, SlashCommand } from "@/types/prompt"
 
 export interface PromptInputProps {
@@ -47,13 +50,25 @@ export interface PromptInputProps {
 	placeholder?: string
 	/** Disable input */
 	disabled?: boolean
+	/** Loading state - shows spinner on submit button */
+	isLoading?: boolean
+	/** Additional class names */
+	className?: string
 }
 
 /**
  * Main prompt input component with autocomplete
  */
-export function PromptInput({ sessionId, onSubmit, placeholder, disabled }: PromptInputProps) {
+export function PromptInput({
+	sessionId,
+	onSubmit,
+	placeholder,
+	disabled,
+	isLoading,
+	className,
+}: PromptInputProps) {
 	const editorRef = useRef<HTMLDivElement>(null)
+	const [hasContent, setHasContent] = useState(false)
 
 	// Store state
 	const {
@@ -70,7 +85,9 @@ export function PromptInput({ sessionId, onSubmit, placeholder, disabled }: Prom
 	} = usePromptStore()
 
 	// Hooks for autocomplete data
-	const { files } = useFileSearch(autocomplete.type === "file" ? autocomplete.query : "")
+	const { files, isLoading: isFileSearchLoading } = useFileSearch(
+		autocomplete.type === "file" ? autocomplete.query : "",
+	)
 	const { getSlashCommands } = useCommands()
 
 	// Update autocomplete items when data changes
@@ -123,6 +140,14 @@ export function PromptInput({ sessionId, onSubmit, placeholder, disabled }: Prom
 
 		// Update store
 		setParts(newParts, cursorPos)
+
+		// Track if there's content for submit button state
+		const contentExists = newParts.some((p) => {
+			if (p.type === "text") return p.content.trim().length > 0
+			if (p.type === "file") return true
+			return false
+		})
+		setHasContent(contentExists)
 
 		// Detect triggers for autocomplete
 		// Get full text content for trigger detection
@@ -236,15 +261,16 @@ export function PromptInput({ sessionId, onSubmit, placeholder, disabled }: Prom
 				e.preventDefault()
 
 				// Submit if not empty
-				const hasContent = parts.some((p) => {
+				const canSubmit = parts.some((p) => {
 					if (p.type === "text") return p.content.trim().length > 0
 					if (p.type === "file") return true
 					return false
 				})
 
-				if (hasContent && onSubmit) {
+				if (canSubmit && onSubmit) {
 					onSubmit(parts)
 					reset()
+					setHasContent(false)
 
 					// Clear DOM
 					if (editorRef.current) {
@@ -264,12 +290,32 @@ export function PromptInput({ sessionId, onSubmit, placeholder, disabled }: Prom
 		],
 	)
 
+	/**
+	 * Handle submit button click
+	 */
+	const handleSubmit = useCallback(() => {
+		if (!hasContent || disabled || isLoading) return
+
+		if (onSubmit) {
+			onSubmit(parts)
+			reset()
+			setHasContent(false)
+
+			// Clear DOM
+			if (editorRef.current) {
+				editorRef.current.innerHTML = ""
+			}
+		}
+	}, [hasContent, disabled, isLoading, onSubmit, parts, reset])
+
 	return (
-		<div className="relative w-full">
+		<div className={cn("relative w-full", className)}>
 			<Autocomplete
 				type={autocomplete.type}
 				items={autocomplete.items}
 				selectedIndex={autocomplete.selectedIndex}
+				visible={autocomplete.visible}
+				isLoading={autocomplete.type === "file" && isFileSearchLoading}
 				onSelect={(item) => {
 					// Set selected index and trigger selection
 					const index = autocomplete.items.findIndex((i) => {
@@ -286,20 +332,53 @@ export function PromptInput({ sessionId, onSubmit, placeholder, disabled }: Prom
 				}}
 			/>
 
-			{/* biome-ignore lint/a11y/useSemanticElements: contenteditable div is required for rich text input with inline file pills */}
 			<div
-				ref={editorRef}
-				contentEditable={!disabled}
-				suppressContentEditableWarning
-				onInput={handleInput}
-				onKeyDown={handleKeyDown}
-				data-placeholder={placeholder}
-				tabIndex={0}
-				aria-label={placeholder || "Enter your prompt"}
-				aria-multiline="true"
-				role="textbox"
-				className="min-h-[100px] p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
-			/>
+				className={cn(
+					"group/input relative flex w-full flex-col rounded-lg border border-input bg-muted dark:bg-zinc-900 shadow-sm",
+					"transition-[border-color,box-shadow] duration-200",
+					"focus-within:ring-1 focus-within:ring-ring",
+					disabled && "opacity-50 cursor-not-allowed",
+				)}
+			>
+				{/* biome-ignore lint/a11y/useSemanticElements: contenteditable div is required for rich text input with inline file pills */}
+				<div
+					ref={editorRef}
+					contentEditable={!disabled}
+					suppressContentEditableWarning
+					onInput={handleInput}
+					onKeyDown={handleKeyDown}
+					data-placeholder={placeholder}
+					tabIndex={0}
+					aria-label={placeholder || "Enter your prompt"}
+					aria-multiline="true"
+					role="textbox"
+					className={cn(
+						"min-h-[80px] max-h-48 overflow-y-auto px-3 py-3 text-sm",
+						"focus:outline-none",
+						"empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground empty:before:pointer-events-none",
+						disabled && "pointer-events-none",
+					)}
+				/>
+
+				{/* Footer with submit button */}
+				<div className="flex items-center justify-end px-3 pb-3">
+					<Button
+						type="button"
+						size="icon"
+						variant={hasContent ? "default" : "ghost"}
+						className="size-8 shrink-0"
+						disabled={!hasContent || disabled || isLoading}
+						onClick={handleSubmit}
+						aria-label="Send message"
+					>
+						{isLoading ? (
+							<Loader2Icon className="size-4 animate-spin" />
+						) : (
+							<CornerDownLeftIcon className="size-4" />
+						)}
+					</Button>
+				</div>
+			</div>
 		</div>
 	)
 }

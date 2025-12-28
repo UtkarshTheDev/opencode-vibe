@@ -43,7 +43,7 @@ export interface Model {
 export interface Provider {
 	id: string
 	name: string
-	source: string
+	source?: string
 	env: string[]
 	models: Record<string, Model>
 }
@@ -125,9 +125,9 @@ export function useProvider(): UseProviderResult {
 			// SDK wraps response in { data: ... }
 			// API returns { all, connected, default } but we normalize to "defaults"
 			const normalized: ProviderData = {
-				all: response.data.all,
-				connected: response.data.connected,
-				defaults: response.data.default,
+				all: (response.data?.all ?? []) as unknown as Provider[],
+				connected: response.data?.connected ?? [],
+				defaults: response.data?.default ?? {},
 			}
 
 			setData(normalized)

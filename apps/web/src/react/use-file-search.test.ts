@@ -37,12 +37,11 @@ const mockFiles = [
 let mockFindFiles: ReturnType<typeof mock>
 
 function resetMocks() {
-	mockFindFiles = mock(
-		async ({ query: _query, dirs: _dirs }: { query: string; dirs?: boolean }) => {
-			// Simulate SDK behavior - return all files for search
-			return mockFiles
-		},
-	)
+	mockFindFiles = mock(async ({ query: _query }: { query: { query: string; dirs?: string } }) => {
+		// Simulate SDK behavior - return all files for search
+		// SDK returns { data: string[] }
+		return { data: mockFiles }
+	})
 }
 
 // Mock createClient from core/client
@@ -98,8 +97,7 @@ describe("useFileSearch", () => {
 		await waitFor(
 			() => {
 				expect(mockFindFiles).toHaveBeenCalledWith({
-					query: "s",
-					dirs: true,
+					query: { query: "s", dirs: "true" },
 				})
 			},
 			{ timeout: 200 },
@@ -133,8 +131,7 @@ describe("useFileSearch", () => {
 		// Should only call once with final query
 		expect(mockFindFiles).toHaveBeenCalledTimes(1)
 		expect(mockFindFiles).toHaveBeenCalledWith({
-			query: "ses",
-			dirs: true,
+			query: { query: "ses", dirs: "true" },
 		})
 	})
 
@@ -158,7 +155,7 @@ describe("useFileSearch", () => {
 	it("returns top 10 results only", async () => {
 		// Mock with 15 files
 		mockFindFiles.mockImplementation(async () => {
-			return Array.from({ length: 15 }, (_, i) => `file-${i}.ts`)
+			return { data: Array.from({ length: 15 }, (_, i) => `file-${i}.ts`) }
 		})
 
 		const { result, rerender } = renderHook(({ query }) => useFileSearch(query), {
@@ -178,7 +175,7 @@ describe("useFileSearch", () => {
 		// Mock with delay
 		mockFindFiles.mockImplementation(async () => {
 			await new Promise((resolve) => setTimeout(resolve, 50))
-			return mockFiles
+			return { data: mockFiles }
 		})
 
 		const { result, rerender } = renderHook(({ query }) => useFileSearch(query), {

@@ -34,6 +34,7 @@ import {
 	useEffect,
 	useRef,
 	useCallback,
+	useState,
 	type ReactNode,
 } from "react"
 import type { GlobalEvent } from "@opencode-ai/sdk/client"
@@ -55,6 +56,7 @@ export type SSEEventType =
 	| "message.part.removed"
 	| "todo.updated"
 	| "project.updated"
+	| "provider.updated"
 	| "global.disposed"
 	| "server.connected"
 	| "server.heartbeat"
@@ -99,6 +101,9 @@ interface SSEProviderProps {
  *
  * Wrap your app with this provider to enable SSE subscriptions.
  * Uses fetch-based SSE with exponential backoff (3s → 6s → 12s → 24s → 30s cap).
+ *
+ * Note: SSE connection only starts on the client (after hydration).
+ * During SSR/prerender, the provider renders children without connecting.
  */
 export function SSEProvider({
 	url,
@@ -106,6 +111,7 @@ export function SSEProvider({
 	maxRetries = 10,
 	children,
 }: SSEProviderProps) {
+	const [mounted, setMounted] = useState(false)
 	const retryCount = useRef(0)
 	const abortController = useRef<AbortController | null>(null)
 	const connectedRef = useRef(false)
@@ -245,13 +251,19 @@ export function SSEProvider({
 		connect()
 	}, [connect])
 
-	// Connect on mount, cleanup on unmount
+	// Mark as mounted (client-side only)
 	useEffect(() => {
+		setMounted(true)
+	}, [])
+
+	// Connect on mount, cleanup on unmount (client-side only)
+	useEffect(() => {
+		if (!mounted) return
 		connect()
 		return () => {
 			abortController.current?.abort()
 		}
-	}, [connect])
+	}, [connect, mounted])
 
 	const value: SSEContextValue = {
 		subscribe,

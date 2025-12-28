@@ -87,10 +87,13 @@ export function useFileSearch(
 				const client = createClient(directory)
 
 				// Call SDK to get all matching files
-				const allFiles = await client.find.files({
-					query,
-					dirs: true,
+				// Note: SDK expects dirs as string "true"/"false", not boolean
+				const response = await client.find.files({
+					query: { query, dirs: "true" },
 				})
+
+				// Extract file paths from response
+				const allFiles = response.data ?? []
 
 				// Apply fuzzy filtering with fuzzysort
 				const fuzzyResults = fuzzysort.go(query, allFiles, {
@@ -104,6 +107,7 @@ export function useFileSearch(
 				setFiles(filteredFiles)
 				setIsLoading(false)
 			} catch (err) {
+				console.error("[useFileSearch] Error fetching files:", err)
 				setError(err instanceof Error ? err : new Error(String(err)))
 				setFiles([])
 				setIsLoading(false)

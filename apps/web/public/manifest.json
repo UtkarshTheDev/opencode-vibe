@@ -1,0 +1,27 @@
+{
+	"name": "OpenCode VIBE",
+	"short_name": "OpenCode",
+	"description": "AI-powered coding assistant",
+	"start_url": "/",
+	"display": "standalone",
+	"orientation": "portrait",
+	"background_color": "#1e1e2e",
+	"theme_color": "#1e1e2e",
+	"icons": [
+		{
+			"src": "/icons/icon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any"
+		}
+	],
+	"categories": ["developer", "productivity", "utilities"],
+	"shortcuts": [
+		{
+			"name": "New Session",
+			"short_name": "New",
+			"description": "Start a new coding session",
+			"url": "/?new=true"
+		}
+	]
+}

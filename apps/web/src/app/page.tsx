@@ -2,6 +2,7 @@ import Link from "next/link"
 import { createClient, globalClient } from "@/core/client"
 import { NewSessionButton } from "./session/[id]/new-session-button"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { OpenCodeLogo } from "@/components/opencode-logo"
 
 interface Session {
 	id: string
@@ -149,65 +150,81 @@ export default async function Dashboard() {
 	const projectsWithSessions = await getProjectsWithSessions()
 
 	return (
-		<div className="min-h-screen bg-background p-8">
-			<div className="max-w-4xl mx-auto">
-				{/* Header */}
-				<div className="flex items-center justify-between mb-8">
-					<h1 className="text-3xl font-bold text-foreground">Projects</h1>
-					<ThemeToggle />
-				</div>
-
-				{/* Projects with Sessions */}
-				<div className="space-y-8">
-					{projectsWithSessions.length === 0 ? (
-						<div className="text-muted-foreground text-center py-12">
-							No projects with sessions yet
+		<div className="min-h-screen bg-background flex flex-col">
+			{/* Header - consistent with session page */}
+			<header className="shrink-0 z-10 backdrop-blur-sm bg-background/80 border-b border-border/50">
+				<div className="max-w-4xl mx-auto px-4 py-3">
+					<div className="flex items-center justify-between">
+						<div className="flex items-center gap-1.5">
+							<OpenCodeLogo width={100} height={18} className="text-foreground" />
+							<span className="text-foreground/60 text-xs font-medium">|</span>
+							<span className="text-foreground font-semibold text-sm tracking-wide">VIBE</span>
 						</div>
-					) : (
-						projectsWithSessions.map(({ project, sessions, name }) => (
-							<div key={project.id} className="space-y-2">
-								{/* Project Header */}
-								<div className="flex items-center gap-3 mb-3">
-									<h2 className="text-lg font-semibold text-foreground">{name}</h2>
-									<span className="text-xs text-muted-foreground">
-										{sessions.length} session{sessions.length !== 1 ? "s" : ""}
-									</span>
-									<div className="ml-auto">
-										<NewSessionButton directory={project.worktree} />
-									</div>
-								</div>
+						<ThemeToggle />
+					</div>
+				</div>
+			</header>
 
-								{/* Sessions List (show top 5) */}
-								<ul className="space-y-1">
-									{sessions.slice(0, 5).map((session) => (
-										<li key={session.id}>
-											<Link
-												href={`/session/${session.id}?dir=${encodeURIComponent(project.worktree)}`}
-												className="block p-3 rounded-lg border border-border bg-card hover:bg-secondary hover:border-accent transition-colors"
-											>
-												{/* Title */}
-												<div className="font-medium text-foreground text-sm line-clamp-1">
-													{session.title || "Untitled Session"}
-												</div>
+			<div className="flex-1 p-8">
+				<div className="max-w-4xl mx-auto">
+					{/* Section Header */}
+					<div className="flex items-center justify-between mb-6">
+						<h1 className="text-xl font-semibold text-foreground">Projects</h1>
+					</div>
 
-												{/* Time */}
-												<div className="text-xs text-muted-foreground mt-1">
-													{session.formattedTime}
-												</div>
-											</Link>
-										</li>
-									))}
-								</ul>
-
-								{/* Show more link if there are more sessions */}
-								{sessions.length > 5 && (
-									<div className="text-sm text-muted-foreground pl-3">
-										+{sessions.length - 5} more sessions
-									</div>
-								)}
+					{/* Projects with Sessions */}
+					<div className="space-y-8">
+						{projectsWithSessions.length === 0 ? (
+							<div className="text-muted-foreground text-center py-12">
+								No projects with sessions yet
 							</div>
-						))
-					)}
+						) : (
+							projectsWithSessions.map(({ project, sessions, name }) => (
+								<div key={project.id} className="space-y-2">
+									{/* Project Header */}
+									<div className="flex items-center gap-3 mb-3">
+										<h2 className="text-lg font-semibold text-foreground">{name}</h2>
+										<span className="text-xs text-muted-foreground">
+											{sessions.length} session
+											{sessions.length !== 1 ? "s" : ""}
+										</span>
+										<div className="ml-auto">
+											<NewSessionButton directory={project.worktree} />
+										</div>
+									</div>
+
+									{/* Sessions List (show top 5) */}
+									<ul className="space-y-1">
+										{sessions.slice(0, 5).map((session) => (
+											<li key={session.id}>
+												<Link
+													href={`/session/${session.id}?dir=${encodeURIComponent(project.worktree)}`}
+													className="block p-3 rounded-lg border border-border bg-card hover:bg-secondary hover:border-accent transition-colors"
+												>
+													{/* Title */}
+													<div className="font-medium text-foreground text-sm line-clamp-1">
+														{session.title || "Untitled Session"}
+													</div>
+
+													{/* Time */}
+													<div className="text-xs text-muted-foreground mt-1">
+														{session.formattedTime}
+													</div>
+												</Link>
+											</li>
+										))}
+									</ul>
+
+									{/* Show more link if there are more sessions */}
+									{sessions.length > 5 && (
+										<div className="text-sm text-muted-foreground pl-3">
+											+{sessions.length - 5} more sessions
+										</div>
+									)}
+								</div>
+							))
+						)}
+					</div>
 				</div>
 			</div>
 		</div>
