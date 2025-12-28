@@ -57,7 +57,10 @@ export function useMessagesWithParts(sessionId: string): OpenCodeMessage[] {
 
 	// Get all parts for this session's messages
 	// We need to subscribe to the parts object to get updates
-	const partsMap = useOpencodeStore((state) => state.directories[directory]?.parts || {})
+	// CRITICAL: Use stable EMPTY_PARTS_MAP reference to avoid infinite loop in useSyncExternalStore
+	const partsMap = useOpencodeStore(
+		(state) => state.directories[directory]?.parts ?? EMPTY_PARTS_MAP,
+	)
 
 	// Defer parts updates to debounce streaming updates
 	// React will prioritize urgent updates (user input) over deferred values
