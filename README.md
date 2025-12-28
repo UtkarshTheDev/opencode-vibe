@@ -1,4 +1,4 @@
-# opencode-next
+# opencode-next 🏄‍♂️
 
 ```
                                       _      │       _ _
