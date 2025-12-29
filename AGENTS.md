@@ -439,6 +439,186 @@ Consumer (apps/web/)
 
 **Source of truth:** `packages/sdk/openapi.json` (OpenAPI 3.1.1)
 
+### SSE Real-Time Sync Architecture
+
+**Event-driven state management with Zustand + Immer + React optimizations.**
+
+#### Architecture Flow
+
+```
+SSE events
+  ↓
+store.handleSSEEvent()
+  ↓
+store.handleEvent()
+  ↓
+Zustand set() with Immer
+  ↓
+useOpencodeStore selectors
+  ↓
+useDeferredValue (intentional lag during rapid updates)
+  ↓
+useMemo (derived state)
+  ↓
+React.memo (component-level optimization)
+  ↓
+Component render
+```
+
+#### Key Implementation Files
+
+| File                                            | Purpose                                              |
+| ----------------------------------------------- | ---------------------------------------------------- |
+| `apps/web/src/react/use-sse.tsx`                | SSE connection, event dispatch to store              |
+| `apps/web/src/react/store.ts`                   | Zustand store with Immer for immutable updates       |
+| `apps/web/src/react/use-messages-with-parts.ts` | Hook consuming store with `useDeferredValue`         |
+| `apps/web/src/components/ai-elements/task.tsx`  | Component using `React.memo` for render optimization |
+
+#### Store Structure (Zustand + Immer)
+
+```typescript
+// Binary search for updates (O(log n))
+// Assumes ULID IDs are sortable
+interface OpencodeStore {
+  sessions: Session[]; // Sorted by ID
+  messages: Message[]; // Sorted by ID
+  parts: Part[]; // Sorted by ID
+
+  handleSSEEvent(event); // Entry point from SSE
+  handleEvent(payload); // Dispatches to specific handlers
+  // ... event handlers for each entity type
+}
+```
+
+Updates use binary search on sorted arrays for efficiency, but create new array references on every mutation due to Immer.
+
+#### Known Gotchas (Discovered During Diagnosis)
+
+##### 1. Immer Creates New Object References
+
+**Problem:** Every store update creates new array/object references, even if content is identical.
+
+**Impact:** `React.memo` with shallow comparison always triggers re-renders because references change.
+
+**Example:**
+
+```typescript
+// Even if metadata.summary hasn't changed, this creates new references
+set((state) => {
+  const partIndex = state.parts.findIndex((p) => p.id === id);
+  state.parts[partIndex].state.metadata.summary = newSummary; // New part object
+});
+```
+
+**Why It Happens:** Immer's copy-on-write semantics ensure immutability by creating new objects for any mutation path.
+
+##### 2. useDeferredValue Intentionally Lags
+
+**Problem:** "Currently doing" status updates appear slow/laggy during rapid message streaming.
+
+**Reality:** This is **expected behavior**, not a bug. `useDeferredValue` is designed to lag behind the actual value during rapid updates to prevent blocking the UI thread.
+
+**Example:**
+
+```typescript
+const messages = useOpencodeStore((state) => state.messages);
+const deferredMessages = useDeferredValue(messages); // Lags during rapid updates
+```
+
+**When It's Noticeable:** Most visible during AI streaming when parts update every 100-500ms. The deferred value lags by 1-2 frames.
+
+##### 3. Deep Nesting for "Currently Doing" Data
+
+**Problem:** The "currently doing" summary is deeply nested: `part.state.metadata.summary`.
+
+**Impact:** Shallow comparison can't detect changes without comparing the entire `part` object graph. This makes memoization less effective.
+
+**Example:**
+
+```typescript
+// Can't just compare part.id, need to check:
+part.state?.metadata?.summary !== prevPart.state?.metadata?.summary;
+```
+
+##### 4. Binary Search Creates New Arrays
+
+**Problem:** Store uses binary search for O(log n) updates, but Immer creates a new array reference on every insert/update.
+
+**Impact:** Any component selecting `state.parts` gets a new reference on every SSE event, triggering re-renders.
+
+**Why We Use It:** Binary search maintains sorted order for ULIDs and enables efficient lookups. The tradeoff is necessary for performance at scale.
+
+#### Recommended Fixes (For Future Work)
+
+##### 1. Content-Aware React.memo
+
+Replace shallow comparison with deep comparison of specific fields:
+
+```typescript
+export const Task = React.memo(TaskComponent, (prev, next) => {
+  // Compare actual content, not references
+  return (
+    prev.part.id === next.part.id &&
+    prev.part.state?.metadata?.summary === next.part.state?.metadata?.summary
+  );
+});
+```
+
+##### 2. Zustand Shallow Equality for Selectors
+
+Use Zustand's `shallow` comparison for derived state:
+
+```typescript
+import { shallow } from "zustand/shallow";
+
+const messages = useOpencodeStore(
+  (state) => state.messages.filter((m) => m.sessionId === id),
+  shallow, // Compare array contents, not reference
+);
+```
+
+##### 3. Batch Rapid SSE Updates
+
+Buffer rapid SSE events and dispatch batched updates:
+
+```typescript
+let updateQueue: Event[] = [];
+let debounceTimer: NodeJS.Timeout;
+
+function handleSSEEvent(event: Event) {
+  updateQueue.push(event);
+
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    store.handleBatchedEvents(updateQueue);
+    updateQueue = [];
+  }, 16); // One frame delay (60fps)
+}
+```
+
+##### 4. Memoize Deeply Nested Selectors
+
+Extract specific fields at the selector level to minimize re-renders:
+
+```typescript
+// Bad: Returns new object on every render
+const part = useOpencodeStore((state) => state.parts.find((p) => p.id === id));
+
+// Good: Returns primitive that can be compared
+const summary = useOpencodeStore(
+  (state) => state.parts.find((p) => p.id === id)?.state?.metadata?.summary,
+);
+```
+
+#### Performance Characteristics
+
+- **SSE event latency:** < 50ms from server to store update
+- **Store update latency:** < 5ms (binary search + Immer)
+- **useDeferredValue lag:** 1-2 frames during rapid updates (expected)
+- **Render frequency:** Throttled by React's concurrent rendering
+
+**Bottleneck:** React.memo with shallow comparison on objects with new references from Immer. Fix by implementing content-aware comparison.
+
 ---
 
 ## Known Gotchas

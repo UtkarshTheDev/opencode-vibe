@@ -206,11 +206,6 @@ export class MultiServerSSE {
 			}
 
 			const servers: DiscoveredServer[] = await response.json()
-			console.log(
-				"[MultiServerSSE] Discovered servers:",
-				servers.length,
-				servers.map((s) => s.port),
-			)
 			const activePorts = new Set(servers.map((s) => s.port))
 
 			// Update directory -> ports mapping (multiple servers per directory)
@@ -237,10 +232,8 @@ export class MultiServerSSE {
 			}
 
 			// Connect to new servers
-			console.log("[MultiServerSSE] Current connections:", [...this.connections.keys()])
 			for (const server of servers) {
 				if (!this.connections.has(server.port)) {
-					console.log("[MultiServerSSE] Will connect to new server:", server.port)
 					this.connectToServer(server.port)
 				}
 			}
@@ -250,13 +243,11 @@ export class MultiServerSSE {
 	}
 
 	private async connectToServer(port: number) {
-		console.log("[MultiServerSSE] Connecting to server on port:", port)
 		const controller = new AbortController()
 		this.connections.set(port, controller)
 
 		while (!controller.signal.aborted && this.started) {
 			try {
-				console.log("[MultiServerSSE] Fetching SSE from port:", port)
 				const response = await fetch(`http://127.0.0.1:${port}/global/event`, {
 					signal: controller.signal,
 					headers: {
@@ -264,7 +255,6 @@ export class MultiServerSSE {
 						"Cache-Control": "no-cache",
 					},
 				})
-				console.log("[MultiServerSSE] Fetch response for port:", port, response.status, response.ok)
 
 				if (!response.ok || !response.body) {
 					throw new Error(`Failed to connect: ${response.status}`)
@@ -277,25 +267,15 @@ export class MultiServerSSE {
 
 				const reader = stream.getReader()
 
-				console.log("[MultiServerSSE] Stream connected for port:", port)
 				while (!controller.signal.aborted) {
 					const { done, value } = await reader.read()
-					if (done) {
-						console.log("[MultiServerSSE] Stream ended for port:", port)
-						break
-					}
+					if (done) break
 
 					try {
-						console.log(
-							"[MultiServerSSE] Raw event from port",
-							port,
-							":",
-							value.data?.substring(0, 100),
-						)
 						const event = JSON.parse(value.data)
 						this.handleEvent(port, event)
-					} catch (e) {
-						console.error("[MultiServerSSE] Parse error for port", port, ":", e)
+					} catch {
+						// Parse error - skip malformed event
 					}
 				}
 			} catch {
@@ -333,12 +313,6 @@ export class MultiServerSSE {
 		}
 
 		// Emit ALL events to subscribers (messages, parts, status, etc.)
-		console.log(
-			"[MultiServerSSE] Emitting event:",
-			payload.type,
-			"dir:",
-			directory.split("/").pop(),
-		)
 		this.emitEvent({
 			directory,
 			payload: payload as SSEEvent["payload"],

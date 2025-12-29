@@ -146,13 +146,36 @@ export function SSEProvider({
 
 		const callbacks = listenersRef.current.get(eventType)
 		if (callbacks) {
+			// DIAGNOSTIC: Measure time to execute all subscriber callbacks
+			const callbackStartTime = performance.now()
+			console.log(`[SSE] Dispatching to ${callbacks.size} subscriber(s) for ${eventType}`)
+
+			let callbackIndex = 0
 			for (const callback of callbacks) {
 				try {
+					const cbStart = performance.now()
 					callback(event)
+					const cbDuration = performance.now() - cbStart
+
+					// Log slow callbacks (>5ms is suspicious)
+					if (cbDuration > 5) {
+						console.warn(
+							`[SSE] Slow callback #${callbackIndex} for ${eventType}: ${cbDuration.toFixed(2)}ms`,
+						)
+					}
+
+					callbackIndex++
 				} catch (error) {
 					console.error(`SSE callback error for ${eventType}:`, error)
 				}
 			}
+
+			const totalCallbackTime = performance.now() - callbackStartTime
+			console.log(
+				`[SSE] All callbacks completed for ${eventType}: ${totalCallbackTime.toFixed(2)}ms`,
+			)
+		} else {
+			console.log(`[SSE] No subscribers for ${eventType}`)
 		}
 	})
 
@@ -230,10 +253,27 @@ export function SSEProvider({
 				const { done, value } = await reader.read()
 				if (done) break
 
+				// DIAGNOSTIC: Start timing when SSE event arrives
+				const sseArrivalTime = performance.now()
+
 				const data = JSON.parse(value.data) as GlobalEvent
+				const eventType = data.payload?.type as SSEEventType
+
+				// Log event arrival with metadata
+				console.log(`[SSE] Event arrived: ${eventType}`, {
+					timestamp: new Date().toISOString(),
+					arrivalTime: sseArrivalTime,
+					directory: data.directory,
+					payload: data.payload,
+				})
+
 				// Reset heartbeat on every event (including server.heartbeat)
 				resetHeartbeatRef.current(connect)
+
+				// DIAGNOSTIC: Measure dispatch time
+				console.time(`sse-dispatch-${eventType}-${sseArrivalTime}`)
 				dispatchEventRef.current(data)
+				console.timeEnd(`sse-dispatch-${eventType}-${sseArrivalTime}`)
 			}
 
 			// Stream ended normally - reconnect

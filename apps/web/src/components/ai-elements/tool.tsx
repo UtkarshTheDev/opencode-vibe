@@ -238,9 +238,9 @@ const ToolCard = ({ toolPart, className, ...props }: ToolCardProps) => {
 						</div>
 						<motion.div
 							key={state.status}
-							initial={{ scale: 0.8, opacity: 0 }}
+							initial={{ scale: 0.9, opacity: 0 }}
 							animate={{ scale: 1, opacity: 1 }}
-							transition={{ type: "spring", stiffness: 500, damping: 25 }}
+							transition={{ duration: 0.15, ease: "easeOut" }}
 							className="flex items-center gap-2 shrink-0"
 						>
 							{getStatusIcon(state)}
@@ -286,9 +286,9 @@ const ToolCard = ({ toolPart, className, ...props }: ToolCardProps) => {
 					</div>
 					<motion.div
 						key={state.status}
-						initial={{ scale: 0.8, opacity: 0 }}
+						initial={{ scale: 0.9, opacity: 0 }}
 						animate={{ scale: 1, opacity: 1 }}
-						transition={{ type: "spring", stiffness: 500, damping: 25 }}
+						transition={{ duration: 0.15, ease: "easeOut" }}
 						className="flex items-center gap-2 shrink-0"
 					>
 						{getStatusIcon(state)}
@@ -311,7 +311,7 @@ const ToolCard = ({ toolPart, className, ...props }: ToolCardProps) => {
 					)}
 					<motion.div
 						animate={{ rotate: isOpen ? 180 : 0 }}
-						transition={{ type: "spring", stiffness: 300, damping: 30 }}
+						transition={{ duration: 0.15, ease: "easeOut" }}
 					>
 						<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
 					</motion.div>
@@ -325,7 +325,7 @@ const ToolCard = ({ toolPart, className, ...props }: ToolCardProps) => {
 						initial={{ height: 0, opacity: 0 }}
 						animate={{ height: "auto", opacity: 1 }}
 						exit={{ height: 0, opacity: 0 }}
-						transition={{ type: "spring", stiffness: 300, damping: 30 }}
+						transition={{ duration: 0.2, ease: "easeOut" }}
 						style={{ overflow: "hidden" }}
 					>
 						<div className="border-t border-surface1 p-4 space-y-4">

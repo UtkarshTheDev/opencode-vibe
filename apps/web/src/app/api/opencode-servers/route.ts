@@ -64,7 +64,13 @@ export async function GET() {
 
 			// Verify it's actually an opencode server and get directory
 			const result = await verifyOpencodeServer(port)
-			if (result.ok && result.directory) {
+			// Filter out invalid directories (root "/" or empty)
+			if (
+				result.ok &&
+				result.directory &&
+				result.directory !== "/" &&
+				result.directory.length > 1
+			) {
 				servers.push({
 					port,
 					pid: parseInt(pid, 10),
