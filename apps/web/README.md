@@ -131,14 +131,17 @@ function createClient(directory?: string) {
 
 ### Key Files
 
-| File                                    | Purpose                                |
-| --------------------------------------- | -------------------------------------- |
-| `src/core/multi-server-sse.ts`          | SSE aggregator, directory→port mapping |
-| `src/core/client.ts`                    | Smart client factory with routing      |
-| `src/app/api/opencode-servers/route.ts` | Server discovery via lsof              |
-| `src/react/provider.tsx`                | SSE subscription, store hydration      |
-| `src/react/store.ts`                    | Zustand store, per-directory state     |
-| `src/react/use-multi-server-sse.ts`     | Hook to start SSE and forward events   |
+| File                                    | Purpose                                 |
+| --------------------------------------- | --------------------------------------- |
+| `src/atoms/servers.ts`                  | effect-atom server discovery (reactive) |
+| `src/core/discovery.ts`                 | ServerDiscovery Effect service          |
+| `src/core/server-routing.ts`            | Pure routing helpers (directory→URL)    |
+| `src/core/multi-server-sse.ts`          | SSE aggregator, directory→port mapping  |
+| `src/core/client.ts`                    | Smart client factory with routing       |
+| `src/app/api/opencode-servers/route.ts` | Server discovery via lsof               |
+| `src/react/provider.tsx`                | SSE subscription, store hydration       |
+| `src/react/store.ts`                    | Zustand store, per-directory state      |
+| `src/react/use-multi-server-sse.ts`     | Hook to start SSE and forward events    |
 
 ### Debugging
 
@@ -199,9 +202,22 @@ Type `@` to reference files as context:
 - **Next.js 16** - App Router, React Server Components, Turbopack
 - **Bun** - Runtime and package manager
 - **TypeScript** - Strict type checking
-- **Zustand** - State management (per-directory stores)
+- **effect-atom** - Reactive state for server discovery (migrating from Zustand)
+- **Effect-TS** - Typed async operations, services
+- **Zustand** - State management (per-directory stores, being migrated)
 - **Tailwind CSS** - Styling
 - **Streamdown** - Markdown rendering with streaming support
 - **TDD** - 119+ tests
+
+### State Management Migration
+
+We're incrementally migrating from Zustand to effect-atom. See [ADR-004](../../docs/adr/004-effect-atom-migration.md) for details.
+
+| Layer            | Current        | Target      |
+| ---------------- | -------------- | ----------- |
+| Server discovery | ✅ effect-atom | effect-atom |
+| SSE connection   | Zustand        | effect-atom |
+| Sessions         | Zustand        | effect-atom |
+| Messages         | Zustand        | effect-atom |
 
 See [AGENTS.md](../../AGENTS.md) for full architecture documentation.
