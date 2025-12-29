@@ -104,6 +104,12 @@ interface SSEProviderProps {
 const HEARTBEAT_TIMEOUT_MS = 60_000
 
 /**
+ * Debug flag for diagnostic logging
+ * Set NEXT_PUBLIC_DEBUG_SSE=true to enable verbose SSE logging
+ */
+const DEBUG_SSE = process.env.NEXT_PUBLIC_DEBUG_SSE === "true"
+
+/**
  * SSEProvider - Manages SSE connection and event distribution
  *
  * Wrap your app with this provider to enable SSE subscriptions.
@@ -150,35 +156,46 @@ export function SSEProvider({
 
 		const callbacks = listenersRef.current.get(eventType)
 		if (callbacks) {
-			// DIAGNOSTIC: Measure time to execute all subscriber callbacks
-			const callbackStartTime = performance.now()
-			console.log(`[SSE] Dispatching to ${callbacks.size} subscriber(s) for ${eventType}`)
+			if (DEBUG_SSE) {
+				// DIAGNOSTIC: Measure time to execute all subscriber callbacks
+				const callbackStartTime = performance.now()
+				console.log(`[SSE] Dispatching to ${callbacks.size} subscriber(s) for ${eventType}`)
 
-			let callbackIndex = 0
-			for (const callback of callbacks) {
-				try {
-					const cbStart = performance.now()
-					callback(event)
-					const cbDuration = performance.now() - cbStart
+				let callbackIndex = 0
+				for (const callback of callbacks) {
+					try {
+						const cbStart = performance.now()
+						callback(event)
+						const cbDuration = performance.now() - cbStart
 
-					// Log slow callbacks (>5ms is suspicious)
-					if (cbDuration > 5) {
-						console.warn(
-							`[SSE] Slow callback #${callbackIndex} for ${eventType}: ${cbDuration.toFixed(2)}ms`,
-						)
+						// Log slow callbacks (>5ms is suspicious)
+						if (cbDuration > 5) {
+							console.warn(
+								`[SSE] Slow callback #${callbackIndex} for ${eventType}: ${cbDuration.toFixed(2)}ms`,
+							)
+						}
+
+						callbackIndex++
+					} catch (error) {
+						console.error(`SSE callback error for ${eventType}:`, error)
 					}
+				}
 
-					callbackIndex++
-				} catch (error) {
-					console.error(`SSE callback error for ${eventType}:`, error)
+				const totalCallbackTime = performance.now() - callbackStartTime
+				console.log(
+					`[SSE] All callbacks completed for ${eventType}: ${totalCallbackTime.toFixed(2)}ms`,
+				)
+			} else {
+				// Production mode: execute callbacks without timing overhead
+				for (const callback of callbacks) {
+					try {
+						callback(event)
+					} catch (error) {
+						console.error(`SSE callback error for ${eventType}:`, error)
+					}
 				}
 			}
-
-			const totalCallbackTime = performance.now() - callbackStartTime
-			console.log(
-				`[SSE] All callbacks completed for ${eventType}: ${totalCallbackTime.toFixed(2)}ms`,
-			)
-		} else {
+		} else if (DEBUG_SSE) {
 			console.log(`[SSE] No subscribers for ${eventType}`)
 		}
 	})
@@ -192,7 +209,8 @@ export function SSEProvider({
 	const queueEventRef = useRef((event: GlobalEvent) => {
 		// Don't batch heartbeat events - they need immediate processing
 		// Note: server.heartbeat may not be in SDK types but is used in practice
-		if ((event.payload as any)?.type === "server.heartbeat") {
+		const eventType = event.payload?.type as string
+		if (eventType === "server.heartbeat") {
 			dispatchEventRef.current(event)
 			return
 		}
@@ -201,15 +219,22 @@ export function SSEProvider({
 
 		if (!debounceTimerRef.current) {
 			debounceTimerRef.current = setTimeout(() => {
-				console.log(`[SSE] Flushing batch of ${updateQueueRef.current.length} events`)
-				const batchStartTime = performance.now()
+				if (DEBUG_SSE) {
+					console.log(`[SSE] Flushing batch of ${updateQueueRef.current.length} events`)
+					const batchStartTime = performance.now()
 
-				for (const e of updateQueueRef.current) {
-					dispatchEventRef.current(e)
+					for (const e of updateQueueRef.current) {
+						dispatchEventRef.current(e)
+					}
+
+					const batchDuration = performance.now() - batchStartTime
+					console.log(`[SSE] Batch processed in ${batchDuration.toFixed(2)}ms`)
+				} else {
+					// Production mode: flush without timing overhead
+					for (const e of updateQueueRef.current) {
+						dispatchEventRef.current(e)
+					}
 				}
-
-				const batchDuration = performance.now() - batchStartTime
-				console.log(`[SSE] Batch processed in ${batchDuration.toFixed(2)}ms`)
 
 				updateQueueRef.current = []
 				debounceTimerRef.current = null
@@ -291,27 +316,33 @@ export function SSEProvider({
 				const { done, value } = await reader.read()
 				if (done) break
 
-				// DIAGNOSTIC: Start timing when SSE event arrives
-				const sseArrivalTime = performance.now()
-
 				const data = JSON.parse(value.data) as GlobalEvent
-				const eventType = data.payload?.type as SSEEventType
 
-				// Log event arrival with metadata
-				console.log(`[SSE] Event arrived: ${eventType}`, {
-					timestamp: new Date().toISOString(),
-					arrivalTime: sseArrivalTime,
-					directory: data.directory,
-					payload: data.payload,
-				})
+				if (DEBUG_SSE) {
+					// DIAGNOSTIC: Start timing when SSE event arrives
+					const sseArrivalTime = performance.now()
+					const eventType = data.payload?.type as SSEEventType
 
-				// Reset heartbeat on every event (including server.heartbeat)
-				resetHeartbeatRef.current(connect)
+					// Log event arrival with metadata
+					console.log(`[SSE] Event arrived: ${eventType}`, {
+						timestamp: new Date().toISOString(),
+						arrivalTime: sseArrivalTime,
+						directory: data.directory,
+						payload: data.payload,
+					})
 
-				// DIAGNOSTIC: Measure dispatch time (includes batching delay)
-				console.time(`sse-dispatch-${eventType}-${sseArrivalTime}`)
-				queueEventRef.current(data)
-				console.timeEnd(`sse-dispatch-${eventType}-${sseArrivalTime}`)
+					// Reset heartbeat on every event (including server.heartbeat)
+					resetHeartbeatRef.current(connect)
+
+					// DIAGNOSTIC: Measure dispatch time (includes batching delay)
+					console.time(`sse-dispatch-${eventType}-${sseArrivalTime}`)
+					queueEventRef.current(data)
+					console.timeEnd(`sse-dispatch-${eventType}-${sseArrivalTime}`)
+				} else {
+					// Production mode: process without timing overhead
+					resetHeartbeatRef.current(connect)
+					queueEventRef.current(data)
+				}
 			}
 
 			// Stream ended normally - reconnect

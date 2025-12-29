@@ -52,8 +52,10 @@ export function useMessagesWithParts(sessionId: string): OpenCodeMessage[] {
 	const { directory } = useOpenCode()
 
 	// Get messages from store (reactive - updates when store changes)
-	// Use useShallow to prevent re-renders when Immer creates new array references
-	// but array contents are identical (shallow equality check)
+	// CRITICAL: Use useShallow to prevent re-renders when Immer creates new array references
+	// but array contents are identical (shallow equality check on array items).
+	// Without useShallow, every Zustand update creates a new array reference even if
+	// message IDs haven't changed, causing unnecessary re-renders of all child components.
 	const messages = useOpencodeStore(
 		useShallow((state) => state.directories[directory]?.messages[sessionId] || EMPTY_MESSAGES),
 	)
@@ -61,7 +63,10 @@ export function useMessagesWithParts(sessionId: string): OpenCodeMessage[] {
 	// Get all parts for this session's messages
 	// We need to subscribe to the parts object to get updates
 	// CRITICAL: Use stable EMPTY_PARTS_MAP reference to avoid infinite loop in useSyncExternalStore
-	// Use useShallow to prevent re-renders when Immer creates new object references
+	// CRITICAL: Use useShallow to prevent re-renders when Immer creates new object references
+	// but object keys/values are identical (shallow equality check on object properties).
+	// Without useShallow, every part update creates a new partsMap reference even if
+	// the messageID keys haven't changed, causing unnecessary re-renders.
 	const partsMap = useOpencodeStore(
 		useShallow((state) => state.directories[directory]?.parts ?? EMPTY_PARTS_MAP),
 	)

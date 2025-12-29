@@ -658,8 +658,12 @@ export function usePartSummary(
 		const parts = state.directories[directory]?.parts[messageId]
 		if (!parts) return undefined
 
-		const part = parts.find((p) => p.id === partId)
-		if (!part || part.type !== "tool") {
+		// Use binary search instead of find() - parts are sorted by ID
+		const result = Binary.search(parts, partId, (p: Part) => p.id)
+		if (!result.found) return undefined
+
+		const part = parts[result.index]
+		if (part.type !== "tool") {
 			return undefined
 		}
 
