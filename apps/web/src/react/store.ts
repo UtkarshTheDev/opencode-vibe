@@ -113,6 +113,14 @@ type OpencodeActions = {
 	setMessages: (directory: string, sessionID: string, messages: Message[]) => void
 	setParts: (directory: string, messageID: string, parts: Part[]) => void
 
+	// Hydration (server-side initial data)
+	hydrateMessages: (
+		directory: string,
+		sessionID: string,
+		messages: Message[],
+		parts: Record<string, Part[]>,
+	) => void
+
 	// Session convenience methods
 	getSession: (directory: string, id: string) => Session | undefined
 	getSessions: (directory: string) => Session[]
@@ -379,6 +387,50 @@ export const useOpencodeStore = create<OpencodeState & OpencodeActions>()(
 					state.directories[directory].parts[messageID] = parts.sort((a, b) =>
 						a.id.localeCompare(b.id),
 					)
+				}
+			})
+		},
+
+		/**
+		 * Hydrate store with initial messages and parts from RSC
+		 *
+		 * This populates the store with server-rendered data before SSE connects,
+		 * preventing the "blink" where tools appear first then text pops in later.
+		 *
+		 * Uses the same binary search insertion as SSE events, so duplicate events
+		 * from SSE will be deduplicated (existing IDs are updated, not inserted).
+		 *
+		 * @param directory - Project directory path
+		 * @param sessionID - Session ID to hydrate messages for
+		 * @param messages - Array of messages to hydrate
+		 * @param parts - Record of messageID -> Part[] to hydrate
+		 *
+		 * @example
+		 * ```tsx
+		 * // In RSC (page.tsx)
+		 * const messages = await client.session.message.list({ sessionID })
+		 * const parts = {} // Build parts from messages
+		 *
+		 * // In client component
+		 * useEffect(() => {
+		 *   store.hydrateMessages(directory, sessionID, messages, parts)
+		 * }, [])
+		 * ```
+		 */
+		hydrateMessages: (directory, sessionID, messages, parts) => {
+			set((state) => {
+				// Auto-create directory if not exists
+				if (!state.directories[directory]) {
+					state.directories[directory] = createEmptyDirectoryState()
+				}
+				const dir = state.directories[directory]
+
+				// Hydrate messages (sorted)
+				dir.messages[sessionID] = messages.sort((a, b) => a.id.localeCompare(b.id))
+
+				// Hydrate parts for each message (sorted)
+				for (const [messageID, messageParts] of Object.entries(parts)) {
+					dir.parts[messageID] = messageParts.sort((a, b) => a.id.localeCompare(b.id))
 				}
 			})
 		},
