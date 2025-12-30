@@ -1,66 +1,63 @@
 /**
- * useMultiServerSSE - Subscribe to SSE events from all OpenCode servers
+ * useMultiServerSSE - Connect to multiple OpenCode servers via SSE
  *
- * Discovers all running opencode servers on the local machine and subscribes
- * to ALL their events (messages, parts, status, etc.). Updates the Zustand store.
+ * Wires up to the core MultiServerSSE singleton to manage SSE connections
+ * to all discovered OpenCode servers.
  *
- * This enables real-time updates from TUIs and other opencode processes!
- * When you send a message to a session running in a TUI, you'll see the
- * response stream in real-time in the web UI.
+ * This is a side-effect hook - it manages connections but returns nothing.
  *
  * @example
  * ```tsx
- * function ProjectsList() {
- *   useMultiServerSSE()
- *   // Store is automatically updated with events from ALL servers
- *   return <div>Projects</div>
+ * function App() {
+ *   const [events, setEvents] = useState<GlobalEvent[]>([])
+ *
+ *   useMultiServerSSE({
+ *     onEvent: (event) => {
+ *       console.log('Event from:', event.directory, event.payload.type)
+ *       setEvents(prev => [...prev, event])
+ *     }
+ *   })
+ *
+ *   return <div>Connected to servers, received {events.length} events</div>
  * }
  * ```
  */
 
-import { useEffect } from "react"
-import { useOpencodeStore } from "../store"
+"use client"
 
-// Stub for multi-server-sse - this is app-specific
-const multiServerSSE = {
-	start: () => {},
-	onEvent: (_callback: (event: any) => void) => () => {},
+import { useEffect } from "react"
+import { multiServerSSE } from "@opencode-vibe/core/sse"
+import type { GlobalEvent } from "../types/events"
+
+export interface UseMultiServerSSEOptions {
+	/** Callback invoked when any server emits an event */
+	onEvent?: (event: GlobalEvent) => void
 }
 
 /**
- * Helper to get store actions without causing re-renders.
- * Zustand's getState() returns stable action references.
- */
-const getStoreActions = () => useOpencodeStore.getState()
-
-/**
- * Hook to subscribe to multi-server SSE events
+ * Hook to connect to all discovered OpenCode servers via SSE
  *
- * Lifecycle:
- * 1. On mount: start multi-server discovery (singleton - only starts once)
- * 2. Subscribe to ALL events from all discovered servers
- * 3. Forward events to store (messages, parts, status, etc.)
- * 4. On unmount: unsubscribe (but don't stop the singleton - other components may need it)
+ * Features:
+ * - Starts MultiServerSSE singleton for automatic server discovery
+ * - Subscribes to all events from all servers
+ * - Forwards events to onEvent callback if provided
+ * - Automatically cleans up subscription on unmount
+ *
+ * @param options - Options with optional onEvent callback
  */
-export function useMultiServerSSE() {
+export function useMultiServerSSE(options?: UseMultiServerSSEOptions): void {
+	// Start MultiServerSSE singleton - idempotent, safe to call multiple times
 	useEffect(() => {
-		// Start multi-server discovery and SSE (idempotent - only starts once)
 		multiServerSSE.start()
+		// No cleanup needed - singleton manages its own lifecycle
+		// and may be shared across multiple hook instances
+	}, [])
 
-		// Subscribe to ALL events from all servers (not just status)
-		// This enables message/part updates from TUIs!
-		const unsubscribe = multiServerSSE.onEvent((event) => {
-			const store = getStoreActions()
+	// Subscribe to events if callback provided
+	useEffect(() => {
+		if (!options?.onEvent) return
 
-			// Initialize directory if needed
-			store.initDirectory(event.directory)
-
-			// Forward event to store - handles all event types
-			store.handleEvent(event.directory, event.payload)
-		})
-
-		// Only unsubscribe, don't stop the singleton
-		// It stays running for the lifetime of the app
+		const unsubscribe = multiServerSSE.onEvent(options.onEvent)
 		return unsubscribe
-	}, []) // Empty deps - only run once on mount
+	}, [options?.onEvent])
 }

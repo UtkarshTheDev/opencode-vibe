@@ -1,45 +1,26 @@
 /**
- * useContextUsage - Hook to track context token usage for a session
+ * Hook for tracking context usage in a session
  *
- * Reads context usage from Zustand store. Real-time updates are handled automatically
- * by OpenCodeProvider which subscribes to context usage SSE events and
- * updates the store via handleSSEEvent().
- *
- * @example
- * ```tsx
- * function ContextIndicator({ sessionId }: { sessionId: string }) {
- *   const { used, limit, percentage, isNearLimit } = useContextUsage(sessionId)
- *
- *   return (
- *     <div>
- *       <Progress value={percentage} />
- *       {isNearLimit && <Badge variant="warning">Near Limit</Badge>}
- *       <span>{formatTokens(used)} / {formatTokens(limit)}</span>
- *     </div>
- *   )
- * }
- * ```
+ * Subscribes to SSE events and tracks token usage in real-time.
  */
 
-import { useOpencodeStore } from "../store"
-import { useOpenCode } from "../providers"
-import { useShallow } from "zustand/react/shallow"
+"use client"
 
-/**
- * Context usage state
- */
+import { useState, useCallback } from "react"
+import { useMultiServerSSE } from "./use-multi-server-sse"
+import type { GlobalEvent } from "../types/events"
+
+export interface UseContextUsageOptions {
+	sessionId: string
+	directory?: string
+}
+
 export interface ContextUsageState {
-	/** Number of tokens used */
 	used: number
-	/** Maximum tokens allowed */
 	limit: number
-	/** Percentage of context used (0-100) */
 	percentage: number
-	/** Remaining tokens available */
 	remaining: number
-	/** Whether context usage is near the limit (>80%) */
 	isNearLimit: boolean
-	/** Token breakdown by type */
 	tokens: {
 		input: number
 		output: number
@@ -47,70 +28,119 @@ export interface ContextUsageState {
 	}
 }
 
-/**
- * Default state when no usage data is available
- */
 const DEFAULT_STATE: ContextUsageState = {
 	used: 0,
-	limit: 0,
+	limit: 200000,
 	percentage: 0,
-	remaining: 0,
+	remaining: 200000,
 	isNearLimit: false,
-	tokens: { input: 0, output: 0, cached: 0 },
+	tokens: {
+		input: 0,
+		output: 0,
+		cached: 0,
+	},
 }
 
 /**
- * useContextUsage - Get context token usage from store (automatically updates via SSE)
- *
- * @param sessionId - The session ID to track
- * @returns ContextUsageState with usage metrics
+ * Extract token data from SSE event payload
  */
-export function useContextUsage(sessionId: string): ContextUsageState {
-	const { directory } = useOpenCode()
+function extractTokens(
+	event: GlobalEvent,
+): { input: number; output: number; cached: number } | null {
+	const props = event.payload.properties as {
+		tokens?: {
+			input?: number
+			output?: number
+			cache?: { read?: number; write?: number }
+		}
+	}
 
-	// Get context usage from store (reactive - updates when store changes)
-	// Store is updated by OpenCodeProvider's SSE subscription to context usage events
-	// Use useShallow for performance (prevents re-renders when nested objects have same values)
-	return useOpencodeStore(
-		useShallow((state) => {
-			const usage = state.directories[directory]?.contextUsage[sessionId]
+	if (!props.tokens) return null
 
-			// If no usage data in store yet, return default values
-			if (!usage) {
-				return DEFAULT_STATE
-			}
-
-			// Return usage data with calculated remaining
-			return {
-				used: usage.used,
-				limit: usage.limit,
-				percentage: usage.percentage,
-				remaining: usage.limit - usage.used,
-				isNearLimit: usage.isNearLimit,
-				tokens: usage.tokens,
-			}
-		}),
-	)
+	return {
+		input: props.tokens.input ?? 0,
+		output: props.tokens.output ?? 0,
+		cached: props.tokens.cache?.read ?? 0,
+	}
 }
 
 /**
- * formatTokens - Format token count for display
+ * Calculate derived context usage state from token data
+ */
+function calculateContextUsage(
+	tokens: { input: number; output: number; cached: number },
+	limit = 200000,
+): ContextUsageState {
+	const used = tokens.input + tokens.output
+	const percentage = (used / limit) * 100
+	const remaining = limit - used
+	const isNearLimit = percentage > 80
+
+	return {
+		used,
+		limit,
+		percentage,
+		remaining,
+		isNearLimit,
+		tokens: {
+			input: tokens.input,
+			output: tokens.output,
+			cached: tokens.cached,
+		},
+	}
+}
+
+/**
+ * Hook for accessing context usage state
  *
- * Converts large numbers to human-readable format with k/M suffixes
+ * Subscribes to SSE events and tracks cumulative token usage for the session.
  *
- * @param n - Number of tokens
- * @returns Formatted string (e.g., "156k", "1.5M")
+ * @param options - Session ID and optional directory
+ * @returns Context usage state that updates in real-time
+ */
+export function useContextUsage(options: UseContextUsageOptions): ContextUsageState {
+	const { sessionId } = options
+	const [state, setState] = useState<ContextUsageState>(DEFAULT_STATE)
+
+	// Handle SSE events
+	const handleEvent = useCallback(
+		(event: GlobalEvent) => {
+			// Filter events by sessionId
+			const props = event.payload.properties as { sessionID?: string }
+			if (props.sessionID !== sessionId) return
+
+			// Extract token data
+			const tokens = extractTokens(event)
+			if (!tokens) return
+
+			// Update state with cumulative tokens
+			setState((prev) => {
+				const cumulative = {
+					input: prev.tokens.input + tokens.input,
+					output: prev.tokens.output + tokens.output,
+					cached: prev.tokens.cached + tokens.cached,
+				}
+
+				return calculateContextUsage(cumulative)
+			})
+		},
+		[sessionId],
+	)
+
+	// Subscribe to SSE events
+	useMultiServerSSE({ onEvent: handleEvent })
+
+	return state
+}
+
+/**
+ * Format token count with K/M suffix
  *
- * @example
- * ```ts
- * formatTokens(500)      // "500"
- * formatTokens(1500)     // "1.5k"
- * formatTokens(156000)   // "156.0k"
- * formatTokens(1500000)  // "1.5M"
- * ```
+ * @param n - Token count
+ * @returns Formatted string (e.g., "1.5K", "2.3M")
  */
 export function formatTokens(n: number): string {
 	if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
-	if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+	if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
 	return n.toString()
 }

@@ -17,6 +17,14 @@ import { createClient } from "../client/index.js"
 import type { Session } from "../types/index.js"
 
 /**
+ * Model selection for prompt requests
+ */
+export interface ModelSelection {
+	providerID: string
+	modelID: string
+}
+
+/**
  * Session atom namespace with Effect programs
  */
 export const SessionAtom = {
@@ -86,6 +94,116 @@ export const SessionAtom = {
 			})
 
 			return response.data ?? null
+		}),
+
+	/**
+	 * Create a new session
+	 *
+	 * @param title - Optional session title
+	 * @param directory - Project directory (optional)
+	 * @returns Effect program that yields Session or Error
+	 *
+	 * @example
+	 * ```typescript
+	 * const session = await Effect.runPromise(SessionAtom.create("My Session"))
+	 * console.log(session.id)
+	 * ```
+	 */
+	create: (title?: string, directory?: string): Effect.Effect<Session, Error> =>
+		Effect.gen(function* () {
+			const client = createClient(directory)
+
+			const response = yield* Effect.tryPromise({
+				try: () => client.session.create({ body: title ? { title } : {} }),
+				catch: (error) =>
+					new Error(
+						`Failed to create session: ${error instanceof Error ? error.message : String(error)}`,
+					),
+			})
+
+			if (!response.data) {
+				return yield* Effect.fail(new Error("Session creation returned no data"))
+			}
+
+			return response.data
+		}),
+
+	/**
+	 * Send a prompt to a session asynchronously (fire-and-forget)
+	 *
+	 * @param sessionId - Session ID
+	 * @param parts - Array of prompt parts (TextPart, FileAttachmentPart, ImageAttachmentPart)
+	 * @param model - Optional model selection (e.g., { providerID: "anthropic", modelID: "claude-3-sonnet" })
+	 * @param directory - Project directory (optional)
+	 * @returns Effect program that yields void or Error
+	 *
+	 * @example
+	 * ```typescript
+	 * await Effect.runPromise(SessionAtom.promptAsync("ses_123", [
+	 *   { type: "text", content: "Hello", start: 0, end: 5 }
+	 * ]))
+	 * ```
+	 */
+	promptAsync: (
+		sessionId: string,
+		parts: unknown[],
+		model?: ModelSelection,
+		directory?: string,
+	): Effect.Effect<void, Error> =>
+		Effect.gen(function* () {
+			const client = createClient(directory)
+
+			const body: { parts: any; model?: ModelSelection } = model
+				? { parts: parts as any, model }
+				: { parts: parts as any }
+
+			yield* Effect.tryPromise({
+				try: () =>
+					client.session.promptAsync({
+						path: { id: sessionId },
+						body,
+					}),
+				catch: (error) =>
+					new Error(
+						`Failed to send prompt: ${error instanceof Error ? error.message : String(error)}`,
+					),
+			})
+		}),
+
+	/**
+	 * Execute a slash command in a session
+	 *
+	 * @param sessionId - Session ID
+	 * @param command - Slash command name (without the /)
+	 * @param args - Command arguments as string
+	 * @param directory - Project directory (optional)
+	 * @returns Effect program that yields void or Error
+	 *
+	 * @example
+	 * ```typescript
+	 * await Effect.runPromise(SessionAtom.command("ses_123", "swarm", "Add auth"))
+	 * ```
+	 */
+	command: (
+		sessionId: string,
+		command: string,
+		args: string,
+		directory?: string,
+	): Effect.Effect<void, Error> =>
+		Effect.gen(function* () {
+			const client = createClient(directory)
+
+			yield* Effect.tryPromise({
+				try: () =>
+					client.session.command({
+						path: { id: sessionId },
+						body: { command, arguments: args },
+					}),
+				catch: (error) =>
+					new Error(
+						`Failed to execute command: ${error instanceof Error ? error.message : String(error)}`,
+					),
+			})
 		}),
 }
 

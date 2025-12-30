@@ -257,7 +257,9 @@ type ToolCardProps = ComponentProps<typeof Collapsible> & {
 const TaskToolCard = ({ toolPart, className, ...props }: ToolCardProps) => {
 	const { state } = toolPart
 	const { primary } = getToolContextLines(toolPart)
-	const { subagent, isExpanded, toggleExpanded, hasSubagent, isRunning } = useSubagent(toolPart.id)
+	const { subagent, isExpanded, toggleExpanded, hasSubagent, isRunning } = useSubagent({
+		partId: toolPart.id,
+	})
 
 	// Task tools are always expandable if they have a subagent
 	const canExpand = hasSubagent || hasExpandableContent(state)

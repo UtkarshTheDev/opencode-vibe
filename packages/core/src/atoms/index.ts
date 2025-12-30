@@ -25,3 +25,6 @@ export {
 	type SubagentSession,
 	type SubagentState,
 } from "./subagents.js"
+
+// Batch 4 - Commands
+export { CommandAtom, type CustomCommand } from "./commands.js"

@@ -25,7 +25,6 @@
  */
 
 import { useCallback, useEffect, useState } from "react"
-import { useSSE } from "./use-sse"
 
 // Stub globalClient - app-specific
 const globalClient = {
@@ -34,6 +33,16 @@ const globalClient = {
 			data: { all: [], connected: [], default: {} } as any,
 		}),
 	},
+}
+
+// Stub: Old useSSE API was removed, new API is event-based
+// TODO: Replace with proper SSE integration when migrating to apps/web
+function useSSE() {
+	return {
+		subscribe: (_eventType: string, _callback: () => void) => {
+			return () => {} // No-op unsubscribe
+		},
+	}
 }
 
 /**

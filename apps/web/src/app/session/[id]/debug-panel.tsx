@@ -1,7 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useOpenCode, useOpencodeStore, useMessages, useMessagesWithParts } from "@/react"
+import {
+	useOpenCode,
+	useMessages,
+	useMessagesWithParts,
+	useParts,
+	type OpenCodeMessage,
+} from "@/react"
 import { multiServerSSE } from "@opencode-vibe/core/sse"
 
 interface DebugPanelProps {
@@ -23,9 +29,9 @@ export function DebugPanel({ sessionId, isOpen }: DebugPanelProps) {
 	} | null>(null)
 	const [copied, setCopied] = useState(false)
 	const { directory } = useOpenCode()
-	const store = useOpencodeStore()
-	const messagesWithParts = useMessagesWithParts(sessionId)
-	const storeMessages = useMessages(sessionId)
+	const messagesWithParts = useMessagesWithParts({ sessionId })
+	const storeMessages = useMessages({ sessionId })
+	const storeParts = useParts({ sessionId })
 
 	const [fetchError, setFetchError] = useState<string | null>(null)
 
@@ -58,10 +64,6 @@ export function DebugPanel({ sessionId, isOpen }: DebugPanelProps) {
 	// Don't render if not open
 	if (!isOpen) return null
 
-	// Get store state
-	const dirState = store.directories[directory]
-	const allDirs = Object.keys(store.directories)
-
 	// Check routing - which server would we send to?
 	const matchingServer = servers.find((s) => s.directory === directory)
 	const routeUrl = matchingServer
@@ -85,10 +87,9 @@ export function DebugPanel({ sessionId, isOpen }: DebugPanelProps) {
 			port: s.port,
 			directory: s.directory,
 		})),
-		storeDirectories: allDirs,
-		storeMessages: storeMessages.length,
-		messagesWithParts: messagesWithParts.length,
-		partsInStore: dirState?.parts ? Object.keys(dirState.parts).length : 0,
+		storeMessages: storeMessages.messages.length,
+		messagesWithParts: messagesWithParts.messages.length,
+		partsInStore: storeParts.parts.length,
 	}
 
 	const copyDebugInfo = async () => {
@@ -203,26 +204,17 @@ export function DebugPanel({ sessionId, isOpen }: DebugPanelProps) {
 			</div>
 
 			<div className="mb-2">
-				<span className="text-yellow-400">Store Directories:</span> {allDirs.length}
-				{allDirs.map((d) => (
-					<div key={d} className="ml-2 text-gray-400">
-						<span className={d === directory ? "text-green-400" : ""}>{d}</span>
-						{d === directory && " ✓"}
-					</div>
-				))}
+				<span className="text-yellow-400">Store Messages:</span> {storeMessages.messages.length}
+				{storeMessages.loading && " (loading...)"}
+				{storeMessages.error && ` (error: ${storeMessages.error.message})`}
 			</div>
 
 			<div className="mb-2">
-				<span className="text-yellow-400">Dir State Ready:</span> {dirState?.ready ? "✅" : "❌"}
-			</div>
-
-			<div className="mb-2">
-				<span className="text-yellow-400">Store Messages:</span> {storeMessages.length}
-			</div>
-
-			<div className="mb-2">
-				<span className="text-yellow-400">Messages w/ Parts:</span> {messagesWithParts.length}
-				{messagesWithParts.slice(-3).map((m: any) => (
+				<span className="text-yellow-400">Messages w/ Parts:</span>{" "}
+				{messagesWithParts.messages.length}
+				{messagesWithParts.loading && " (loading...)"}
+				{messagesWithParts.error && ` (error: ${messagesWithParts.error.message})`}
+				{messagesWithParts.messages.slice(-3).map((m) => (
 					<div key={m.info.id} className="ml-2 text-gray-400">
 						{m.info.id.slice(0, 8)}... ({m.parts.length} parts)
 					</div>
@@ -230,8 +222,9 @@ export function DebugPanel({ sessionId, isOpen }: DebugPanelProps) {
 			</div>
 
 			<div className="mb-2">
-				<span className="text-yellow-400">Parts in Store:</span>{" "}
-				{dirState?.parts ? Object.keys(dirState.parts).length : 0} message(s)
+				<span className="text-yellow-400">Parts in Store:</span> {storeParts.parts.length}
+				{storeParts.loading && " (loading...)"}
+				{storeParts.error && ` (error: ${storeParts.error.message})`}
 			</div>
 		</div>
 	)

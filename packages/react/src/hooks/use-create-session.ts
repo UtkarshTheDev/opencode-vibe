@@ -25,8 +25,7 @@
  */
 
 import { useCallback, useState } from "react"
-import type { Session } from "../types/sdk"
-import { useOpenCode } from "../providers"
+import { sessions, type Session } from "@opencode-vibe/core/api"
 
 interface UseCreateSessionReturn {
 	createSession: (title?: string) => Promise<Session | null>
@@ -37,7 +36,7 @@ interface UseCreateSessionReturn {
 /**
  * Create a new session with optional title
  *
- * Uses router caller from OpenCodeProvider context to call session.create route.
+ * Uses sessions.create() from @opencode-vibe/core/api for Promise-based session creation.
  * Returns unwrapped Session (no .data access needed).
  *
  * @returns Function to create session, loading state, and error state
@@ -83,32 +82,27 @@ interface UseCreateSessionReturn {
  * ```
  */
 export function useCreateSession(): UseCreateSessionReturn {
-	const { caller } = useOpenCode()
 	const [isCreating, setIsCreating] = useState(false)
 	const [error, setError] = useState<Error | null>(null)
 
-	const createSession = useCallback(
-		async (title?: string): Promise<Session | null> => {
-			try {
-				setIsCreating(true)
-				setError(null)
+	const createSession = useCallback(async (title?: string): Promise<Session | null> => {
+		try {
+			setIsCreating(true)
+			setError(null)
 
-				// Call session.create via router
-				// Input: { title?: string }
-				// Returns: Session (already unwrapped, no .data access needed)
-				const result = await caller("session.create", title ? { title } : {})
+			// Call sessions.create() from @opencode-vibe/core/api
+			// Returns: Session (already unwrapped, no .data access needed)
+			const result = await sessions.create(title)
 
-				return result
-			} catch (err) {
-				const errorObj = err instanceof Error ? err : new Error(String(err))
-				setError(errorObj)
-				return null
-			} finally {
-				setIsCreating(false)
-			}
-		},
-		[caller],
-	)
+			return result
+		} catch (err) {
+			const errorObj = err instanceof Error ? err : new Error(String(err))
+			setError(errorObj)
+			return null
+		} finally {
+			setIsCreating(false)
+		}
+	}, [])
 
 	return { createSession, isCreating, error }
 }

@@ -1,83 +1,86 @@
 /**
- * useSession - Hook for accessing session data with real-time updates
+ * useSession - Bridge Promise API to React state
  *
- * Provides two APIs:
- * 1. useSession(id) - Get single session from Zustand store (legacy during migration)
- * 2. useSessionList(options) - Get session list from atoms/sessions.ts with SSE sync
+ * Wraps sessions.get from @opencode-vibe/core/api and manages React state.
+ * Provides loading, error, and data states for a single session.
  *
- * @example Single session (Zustand store)
+ * @example
  * ```tsx
  * function SessionView({ sessionId }: { sessionId: string }) {
- *   const session = useSession(sessionId)
+ *   const { session, loading, error, refetch } = useSession({ sessionId })
  *
+ *   if (loading) return <div>Loading session...</div>
+ *   if (error) return <div>Error: {error.message}</div>
  *   if (!session) return <div>Session not found</div>
  *
  *   return <div>{session.title}</div>
  * }
  * ```
- *
- * @example Session list (atoms pattern)
- * ```tsx
- * function SessionList({ directory }: { directory: string }) {
- *   const { sessions, loading, error } = useSessionList({ directory })
- *
- *   if (loading) return <div>Loading...</div>
- *   if (error) console.warn("Failed to load sessions:", error)
- *
- *   return (
- *     <ul>
- *       {sessions.map(s => <li key={s.id}>{s.title}</li>)}
- *     </ul>
- *   )
- * }
- * ```
  */
 
-import { useOpencodeStore, type Session, Binary } from "../store"
-import { useOpenCode } from "../providers"
+"use client"
 
-/**
- * useSession - Get session from store (automatically updates via SSE)
- *
- * @param sessionId - ID of the session to retrieve
- * @returns Session object or undefined if not found
- */
-export function useSession(sessionId: string): Session | undefined {
-	const { directory } = useOpenCode()
+import { useState, useEffect, useCallback } from "react"
+import { sessions } from "@opencode-vibe/core/api"
+import type { Session } from "@opencode-vibe/core/types"
 
-	// Get session from store (reactive - updates when store changes)
-	// Store is updated by OpenCodeProvider's SSE subscription
-	const session = useOpencodeStore((state) => {
-		const dir = state.directories[directory]
-		if (!dir) return undefined
-		const result = Binary.search(dir.sessions, sessionId, (s: Session) => s.id)
-		return result.found ? dir.sessions[result.index] : undefined
-	})
+export interface UseSessionOptions {
+	/** Session ID to fetch */
+	sessionId: string
+	/** Project directory (optional) */
+	directory?: string
+}
 
-	return session
+export interface UseSessionReturn {
+	/** Session data or null if not found */
+	session: Session | null
+	/** Loading state */
+	loading: boolean
+	/** Error if fetch failed */
+	error: Error | null
+	/** Refetch session */
+	refetch: () => void
 }
 
 /**
- * useSessionList - Get session list from Zustand store with SSE sync
+ * Hook to fetch a single session using Promise API from core
  *
- * Re-exported for Phase 3b migration. This hook reads from the same
- * Zustand store that's updated by OpenCodeProvider's SSE subscription.
- *
- * @param options - Options object with directory
- * @returns Object with sessions array, loading state, error state
+ * @param options - Options with sessionId and optional directory
+ * @returns Object with session, loading, error, and refetch
  */
-export function useSessionList(options?: { directory?: string }) {
-	const context = useOpenCode()
-	const directory = options?.directory ?? context.directory
+export function useSession(options: UseSessionOptions): UseSessionReturn {
+	const [session, setSession] = useState<Session | null>(null)
+	const [loading, setLoading] = useState(true)
+	const [error, setError] = useState<Error | null>(null)
 
-	const sessions = useOpencodeStore((state) => {
-		const dir = state.directories[directory]
-		return dir?.sessions ?? []
-	})
+	const fetch = useCallback(() => {
+		setLoading(true)
+		setError(null)
+
+		sessions
+			.get(options.sessionId, options.directory)
+			.then((data: Session | null) => {
+				setSession(data)
+				setError(null)
+			})
+			.catch((err: unknown) => {
+				const error = err instanceof Error ? err : new Error(String(err))
+				setError(error)
+				setSession(null)
+			})
+			.finally(() => {
+				setLoading(false)
+			})
+	}, [options.sessionId, options.directory])
+
+	useEffect(() => {
+		fetch()
+	}, [fetch])
 
 	return {
-		sessions,
-		loading: false, // SSE is always connected via provider
-		error: null,
+		session,
+		loading,
+		error,
+		refetch: fetch,
 	}
 }

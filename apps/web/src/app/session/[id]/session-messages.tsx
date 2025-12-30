@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, memo } from "react"
 import type { UIMessage, ChatStatus } from "ai"
-import { useMessagesWithParts, useSessionStatus, useOpencodeStore } from "@/react"
+import { useMessagesWithParts, useSessionStatus } from "@/react"
 import {
 	transformMessages,
 	type ExtendedUIMessage,
@@ -264,24 +264,17 @@ export function SessionMessages({
 	initialStoreParts,
 	status: externalStatus,
 }: SessionMessagesProps) {
-	// Hydrate store synchronously BEFORE first render
-	// This is intentionally a side effect during render to avoid flash of empty state
-	// The store hydration is idempotent - it only hydrates if not already hydrated
-	const targetDirectory = directory || "/"
-	const store = useOpencodeStore.getState()
-	const directoryState = store.directories[targetDirectory]
-	const isHydrated = (directoryState?.messages[sessionId]?.length ?? 0) > 0
+	// Get messages with parts from API
+	const { messages: storeMessages } = useMessagesWithParts({
+		sessionId,
+		directory: directory || "/",
+	})
 
-	if (!isHydrated && initialStoreMessages.length > 0) {
-		store.hydrateMessages(targetDirectory, sessionId, initialStoreMessages, initialStoreParts)
-	}
-
-	// Get messages with parts from Zustand store (updated by useMultiServerSSE)
-	// Now this hook reads from already-hydrated store on first render
-	const storeMessages = useMessagesWithParts(sessionId)
-
-	// Get session status from store
-	const { running } = useSessionStatus(sessionId)
+	// Get session status from API
+	const { running } = useSessionStatus({
+		sessionId,
+		directory: directory || "/",
+	})
 
 	// Transform store messages to UIMessage format (with extended metadata)
 	// Cast to OpenCodeMessage[] - the types are structurally compatible

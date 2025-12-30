@@ -74,18 +74,12 @@ export function convertToApiParts(parts: Prompt, directory: string): ApiPart[] {
 			}
 		}
 
-		// image part
-		const absolutePath = part.path.startsWith("/") ? part.path : `${directory}/${part.path}`
-
-		const filename = part.path.split("/").pop() || "image"
-		const ext = filename.split(".").pop()?.toLowerCase()
-		const mime = getMimeType(ext || "")
-
+		// image part - uses dataUrl from ImageAttachmentPart
 		return {
 			type: "image",
-			mime,
-			url: `file://${absolutePath}`,
-			filename,
+			mime: part.mime,
+			url: part.dataUrl,
+			filename: part.filename,
 		}
 	})
 }

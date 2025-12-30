@@ -1,112 +1,90 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { useOpenCode } from "../providers"
-
-export interface Provider {
-	id: string
-	name: string
-	models: Model[]
-}
-
-export interface Model {
-	id: string
-	name: string
-}
-
-export interface UseProvidersReturn {
-	providers: Provider[]
-	isLoading: boolean
-	error?: Error
-}
-
 /**
- * Hook for fetching available AI providers and their models.
+ * useProviders - Bridge Promise API to React state
  *
- * Uses the router caller to invoke provider.list route.
- * Directory scoping is handled by the OpenCodeProvider context.
+ * Wraps providers.list from @opencode-vibe/core/api and manages React state.
+ * Provides loading, error, and data states for provider list.
  *
  * @example
  * ```tsx
- * const { providers, isLoading, error } = useProviders()
+ * function ProviderList() {
+ *   const { providers, loading, error, refetch } = useProviders()
  *
- * if (isLoading) return <div>Loading...</div>
- * if (error) return <div>Error: {error.message}</div>
+ *   if (loading) return <div>Loading providers...</div>
+ *   if (error) return <div>Error: {error.message}</div>
  *
- * return (
- *   <select>
- *     {providers.map(provider =>
- *       provider.models.map(model => (
- *         <option key={`${provider.id}-${model.id}`}>
- *           {provider.name} - {model.name}
- *         </option>
- *       ))
- *     )}
- *   </select>
- * )
+ *   return (
+ *     <select>
+ *       {providers.map(provider =>
+ *         provider.models.map(model => (
+ *           <option key={`${provider.id}-${model.id}`}>
+ *             {provider.name} - {model.name}
+ *           </option>
+ *         ))
+ *       )}
+ *     </select>
+ *   )
+ * }
  * ```
  */
+
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+import { providers } from "@opencode-vibe/core/api"
+import type { Provider, Model } from "@opencode-vibe/core/atoms"
+
+export interface UseProvidersReturn {
+	/** Array of providers with their models */
+	providers: Provider[]
+	/** Loading state */
+	loading: boolean
+	/** Error if fetch failed */
+	error: Error | null
+	/** Refetch providers */
+	refetch: () => void
+}
+
+/**
+ * Hook to fetch provider list using Promise API from core
+ *
+ * @returns Object with providers, loading, error, and refetch
+ */
 export function useProviders(): UseProvidersReturn {
-	const [providers, setProviders] = useState<Provider[]>([])
-	const [isLoading, setIsLoading] = useState(true)
-	const [error, setError] = useState<Error | undefined>(undefined)
+	const [providerList, setProviderList] = useState<Provider[]>([])
+	const [loading, setLoading] = useState(true)
+	const [error, setError] = useState<Error | null>(null)
 
-	// Get caller from context
-	const { caller } = useOpenCode()
+	const fetch = useCallback(() => {
+		setLoading(true)
+		setError(null)
 
-	// Fetch providers on mount
+		providers
+			.list()
+			.then((data: Provider[]) => {
+				setProviderList(data)
+				setError(null)
+			})
+			.catch((err: unknown) => {
+				const error = err instanceof Error ? err : new Error(String(err))
+				setError(error)
+				setProviderList([])
+			})
+			.finally(() => {
+				setLoading(false)
+			})
+	}, [])
+
 	useEffect(() => {
-		let isCancelled = false
-
-		async function fetchProviders() {
-			setIsLoading(true)
-			setError(undefined)
-
-			try {
-				// Caller returns unwrapped data (no .data property)
-				const response = (await caller("provider.list", {})) as {
-					all: Provider[]
-					connected: string[]
-					default: Record<string, string>
-				}
-				if (!isCancelled) {
-					// Response is already unwrapped: { all: Provider[], default: Provider, connected: string[] }
-					// Each provider has models as a dictionary { [key: string]: Model }
-					// We need to transform to our interface where models is an array
-					const rawProviders = response.all ?? []
-					const transformedProviders: Provider[] = rawProviders.map((p: any) => ({
-						id: p.id,
-						name: p.name,
-						// Transform models dictionary to array
-						models: p.models
-							? Object.entries(p.models).map(([id, model]: [string, any]) => ({
-									id,
-									name: model.name || id,
-								}))
-							: [],
-					}))
-					setProviders(transformedProviders)
-				}
-			} catch (err) {
-				if (!isCancelled) {
-					const error = err instanceof Error ? err : new Error(String(err))
-					setError(error)
-				}
-			} finally {
-				if (!isCancelled) {
-					setIsLoading(false)
-				}
-			}
-		}
-
-		fetchProviders()
-
-		return () => {
-			isCancelled = true
-		}
-	}, [caller])
+		fetch()
+	}, [fetch])
 
 	return {
-		providers,
-		isLoading,
+		providers: providerList,
+		loading,
 		error,
+		refetch: fetch,
 	}
 }
+
+// Re-export types for convenience
+export type { Provider, Model }

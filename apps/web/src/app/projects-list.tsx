@@ -8,17 +8,15 @@
  * Sessions auto-sort by last activity with smooth animations.
  */
 
-import { useEffect, useRef, useMemo, memo } from "react"
+import { useEffect, useRef, useMemo, memo, useState, useCallback } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import {
-	useOpencodeStore,
-	type SessionStatusType as SessionStatus,
-	useSSE,
-	useMultiServerSSE,
-	useLiveTime,
-} from "@/react"
+import { useSSE, useMultiServerSSE, useLiveTime, useOpenCode } from "@/react"
 import { createClient } from "@/lib/client"
+import type { GlobalEvent } from "@opencode-ai/sdk/client"
+
+// Session status type (extracted from SSE event payload)
+type SessionStatusValue = "running" | "pending" | "completed" | "error"
 
 interface SessionDisplay {
 	id: string
@@ -67,7 +65,7 @@ function formatRelativeTime(timestamp: number): string {
  * Green = running, pulsing
  * Gray = idle/completed
  */
-function StatusIndicator({ status }: { status?: SessionStatus }) {
+function StatusIndicator({ status }: { status?: SessionStatusValue }) {
 	const isActive = status === "running" || status === "pending"
 
 	if (isActive) {
@@ -87,12 +85,15 @@ function StatusIndicator({ status }: { status?: SessionStatus }) {
  * Single session row with live status and live-updating relative time
  */
 const SessionRow = memo(
-	function SessionRow({ session, directory }: { session: SessionDisplay; directory: string }) {
-		// Subscribe to session status from store
-		const status = useOpencodeStore(
-			(state: any) => state.directories[directory]?.sessionStatus[session.id],
-		)
-
+	function SessionRow({
+		session,
+		directory,
+		status,
+	}: {
+		session: SessionDisplay
+		directory: string
+		status?: SessionStatusValue
+	}) {
 		// Trigger re-render every 60 seconds for live time updates
 		useLiveTime()
 
@@ -121,28 +122,25 @@ const SessionRow = memo(
 		)
 	},
 	(prev, next) => {
-		// Only re-render if session ID or directory changes
-		// Status changes will still trigger re-render via useOpencodeStore subscription
-		return prev.session.id === next.session.id && prev.directory === next.directory
+		// Only re-render if session ID, directory, or status changes
+		return (
+			prev.session.id === next.session.id &&
+			prev.directory === next.directory &&
+			prev.status === next.status
+		)
 	},
 )
-
-// Empty objects for stable references when directory data doesn't exist
-const EMPTY_STATUS: Record<string, SessionStatus> = {}
-const EMPTY_ACTIVITY: Record<string, number> = {}
 
 /**
  * Hook to get sorted sessions for a project
  * Sorts by: running sessions first, then by last activity timestamp
  */
-function useSortedSessions(sessions: SessionDisplay[], directory: string) {
-	// Select raw values first, then derive - avoids creating new objects in selector
-	const sessionStatuses =
-		useOpencodeStore((state: any) => state.directories[directory]?.sessionStatus) ?? EMPTY_STATUS
-	const lastActivity =
-		useOpencodeStore((state: any) => state.directories[directory]?.sessionLastActivity) ??
-		EMPTY_ACTIVITY
-
+function useSortedSessions(
+	sessions: SessionDisplay[],
+	directory: string,
+	sessionStatuses: Record<string, SessionStatusValue>,
+	lastActivity: Record<string, number>,
+) {
 	return useMemo(() => {
 		return [...sessions].sort((a, b) => {
 			const aStatus = sessionStatuses[a.id]
@@ -154,7 +152,7 @@ function useSortedSessions(sessions: SessionDisplay[], directory: string) {
 			if (aRunning && !bRunning) return -1
 			if (!aRunning && bRunning) return 1
 
-			// Then sort by last activity (from store) or timestamp (from server)
+			// Then sort by last activity (from SSE) or timestamp (from server)
 			const aTime = lastActivity[a.id] ?? a.timestamp
 			const bTime = lastActivity[b.id] ?? b.timestamp
 			return bTime - aTime // Most recent first
@@ -168,11 +166,15 @@ function useSortedSessions(sessions: SessionDisplay[], directory: string) {
 function SortedSessionsList({
 	sessions,
 	directory,
+	sessionStatuses,
+	lastActivity,
 }: {
 	sessions: SessionDisplay[]
 	directory: string
+	sessionStatuses: Record<string, SessionStatusValue>
+	lastActivity: Record<string, number>
 }) {
-	const sortedSessions = useSortedSessions(sessions, directory)
+	const sortedSessions = useSortedSessions(sessions, directory, sessionStatuses, lastActivity)
 
 	return (
 		<>
@@ -189,7 +191,11 @@ function SortedSessionsList({
 						scale: { duration: 0.15 },
 					}}
 				>
-					<SessionRow session={session} directory={directory} />
+					<SessionRow
+						session={session}
+						directory={directory}
+						status={sessionStatuses[session.id]}
+					/>
 				</motion.li>
 			))}
 		</>
@@ -214,7 +220,7 @@ function NewSessionButton({ directory }: { directory: string }) {
  * SSE Connection indicator for debugging
  */
 function SSEStatus() {
-	const { connected } = useSSE()
+	const { connected } = useSSE({ url: "http://localhost:4056" })
 	return (
 		<div className="fixed bottom-4 right-4 flex items-center gap-2 text-xs text-muted-foreground bg-card border border-border rounded-full px-3 py-1">
 			<span className={`w-2 h-2 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />
@@ -244,41 +250,32 @@ function deriveSessionStatus(
 }
 
 /**
- * Bootstrap session statuses for all projects
- * Derives status from messages since /session/status is per-process in-memory
- *
- * TODO: PERF - This fetches messages for top 10 recent sessions synchronously on mount,
- * blocking initial render. Consider:
- * - Lazy load in background after initial render
- * - Progressive enhancement: render immediately, update status when loaded
- * - Server-side status derivation during SSR
- * - Prioritize visible sessions only
+ * Hook to manage session statuses across all projects
+ * Handles bootstrap and SSE updates
  */
-function useBootstrapStatuses(projects: ProjectWithSessions[]) {
+function useSessionStatuses(projects: ProjectWithSessions[]) {
+	// Map of sessionId -> status
+	const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatusValue>>({})
+	// Map of sessionId -> last activity timestamp
+	const [lastActivity, setLastActivity] = useState<Record<string, number>>({})
+
 	const bootstrappedRef = useRef(false)
 
+	// Bootstrap session statuses for recent sessions on mount
 	useEffect(() => {
 		// Only bootstrap once
 		if (bootstrappedRef.current) return
 		bootstrappedRef.current = true
 
 		async function bootstrap() {
-			const store = useOpencodeStore.getState()
-
 			// Fetch status for each project in parallel
 			await Promise.all(
 				projects.map(async ({ project, sessions }) => {
 					try {
 						const client = createClient(project.worktree)
 
-						// Initialize directory
-						store.initDirectory(project.worktree)
-
 						// Only check recent sessions (updated in last 5 minutes) - likely active
-						const recentCutoff = Date.now() - 5 * 60 * 1000
 						const recentSessions = sessions.filter((s) => {
-							// Parse the formattedTime to check if recent
-							// Sessions come sorted by updated time, so just check first few
 							return s.formattedTime.includes("just now") || s.formattedTime.includes("m ago")
 						})
 
@@ -295,13 +292,10 @@ function useBootstrapStatuses(projects: ProjectWithSessions[]) {
 									const status = deriveSessionStatus(messages)
 
 									if (status === "running") {
-										useOpencodeStore.getState().handleEvent(project.worktree, {
-											type: "session.status",
-											properties: {
-												sessionID: session.id,
-												status: { type: "busy" },
-											},
-										})
+										setSessionStatuses((prev) => ({
+											...prev,
+											[session.id]: "running",
+										}))
 									}
 								} catch {
 									// Ignore individual session errors
@@ -317,29 +311,50 @@ function useBootstrapStatuses(projects: ProjectWithSessions[]) {
 
 		bootstrap()
 	}, [projects])
-}
 
-/**
- * Subscribe to SSE events for all project directories
- * Keeps session statuses fresh as they change
- */
-function useSSESubscription(projects: ProjectWithSessions[]) {
-	const { subscribe } = useSSE()
+	// Subscribe to SSE events for real-time updates
+	const { events } = useSSE({ url: "http://localhost:4056" })
 
 	useEffect(() => {
-		// Get unique directories
+		// Get unique directories for filtering
 		const directories = new Set(projects.map((p) => p.project.worktree))
 
-		// Subscribe to session.status events from main SSE
-		const unsubscribe = subscribe("session.status", (event) => {
-			// Only process events for our directories
-			if (directories.has(event.directory)) {
-				useOpencodeStore.getState().handleEvent(event.directory, event.payload)
-			}
-		})
+		// Process only the latest events (avoid reprocessing all on every event)
+		const latestEvents = events.slice(-10) // Last 10 events should be enough
 
-		return unsubscribe
-	}, [projects, subscribe])
+		for (const event of latestEvents) {
+			// Only process events for our directories
+			if (!directories.has(event.directory)) continue
+
+			// Handle session.status events
+			if (event.payload.type === "session.status") {
+				const sessionID = event.payload.properties.sessionID
+				const statusType = event.payload.properties.status?.type
+
+				if (statusType === "busy") {
+					setSessionStatuses((prev) => ({
+						...prev,
+						[sessionID]: "running",
+					}))
+					setLastActivity((prev) => ({
+						...prev,
+						[sessionID]: Date.now(),
+					}))
+				} else if (statusType === "idle") {
+					setSessionStatuses((prev) => ({
+						...prev,
+						[sessionID]: "completed",
+					}))
+					setLastActivity((prev) => ({
+						...prev,
+						[sessionID]: Date.now(),
+					}))
+				}
+			}
+		}
+	}, [events, projects])
+
+	return { sessionStatuses, lastActivity }
 }
 
 /**
@@ -349,11 +364,8 @@ function useSSESubscription(projects: ProjectWithSessions[]) {
  * 2. Subscribes to SSE for real-time status updates
  */
 export function ProjectsList({ initialProjects }: ProjectsListProps) {
-	// Bootstrap statuses on mount (derive from messages)
-	useBootstrapStatuses(initialProjects)
-
-	// Keep fresh via main SSE (opencode serve)
-	useSSESubscription(initialProjects)
+	// Manage session statuses across all projects
+	const { sessionStatuses, lastActivity } = useSessionStatuses(initialProjects)
 
 	// Also subscribe to ALL opencode servers on the machine
 	useMultiServerSSE()
@@ -384,7 +396,12 @@ export function ProjectsList({ initialProjects }: ProjectsListProps) {
 					{/* Sessions List (show top 5) - animated reordering */}
 					<ul className="space-y-1">
 						<AnimatePresence mode="popLayout">
-							<SortedSessionsList sessions={sessions.slice(0, 5)} directory={project.worktree} />
+							<SortedSessionsList
+								sessions={sessions.slice(0, 5)}
+								directory={project.worktree}
+								sessionStatuses={sessionStatuses}
+								lastActivity={lastActivity}
+							/>
 						</AnimatePresence>
 					</ul>
 

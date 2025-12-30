@@ -2,7 +2,7 @@
  * Message types for OpenCode React package
  */
 
-import type { Message, Part } from "../store"
+import type { Message, Part } from "@opencode-vibe/core/types"
 
 /**
  * OpenCodeMessage combines message info with its parts

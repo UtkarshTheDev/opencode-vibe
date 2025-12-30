@@ -24,7 +24,7 @@ interface ContextUsageBarProps {
  * ```
  */
 export function ContextUsageBar({ sessionId }: ContextUsageBarProps) {
-	const { used, limit, percentage, isNearLimit } = useContextUsage(sessionId)
+	const { used, limit, percentage, isNearLimit } = useContextUsage({ sessionId })
 
 	// Don't render if no limit set (not initialized yet)
 	if (limit === 0) {

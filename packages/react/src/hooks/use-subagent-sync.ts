@@ -1,118 +1,136 @@
 /**
- * useSubagentSync - Subscribe to child session SSE events
+ * Subagent sync hook
  *
- * Handles real-time sync for subagent sessions spawned via Task tool.
- * Filters SSE events by parentSessionId to track only child sessions.
+ * Subscribes to SSE events and syncs subagent state for a given session.
  *
- * Per SUBAGENT_DISPLAY.md lines 494-584.
- *
- * @param parentSessionId - The parent session ID to filter child sessions
- *
- * @example
- * ```tsx
- * function ParentSession({ sessionId }: { sessionId: string }) {
- *   useSubagentSync(sessionId)
- *   // Now subagent store is synced with SSE for all child sessions
- * }
- * ```
+ * @module
  */
 
-import { useEffect, useRef } from "react"
-import { useSSE } from "./use-sse"
-import { useSubagentStore } from "../stores/subagent-store"
+"use client"
 
-// Stub GlobalEvent type
-interface GlobalEvent {
-	payload: any
+import { useEffect, useRef } from "react"
+import { useMultiServerSSE } from "./use-multi-server-sse.js"
+import { subagents } from "@opencode-vibe/core/api"
+import type { SubagentStateRef } from "@opencode-vibe/core/api"
+import type { Message, Part } from "@opencode-vibe/core/types"
+import type { GlobalEvent } from "../types/events.js"
+
+/**
+ * Options for useSubagentSync hook
+ */
+export interface UseSubagentSyncOptions {
+	/**
+	 * Session ID to sync subagent events for
+	 */
+	sessionId: string
+
+	/**
+	 * Optional directory to scope SSE subscription
+	 */
+	directory?: string
 }
 
-export function useSubagentSync(parentSessionId: string) {
-	const { subscribe } = useSSE()
-	const pendingChildSessions = useRef<Set<string>>(new Set())
+/**
+ * Hook to sync subagent SSE events for a session
+ *
+ * This hook:
+ * 1. Creates a subagent state ref on mount
+ * 2. Subscribes to SSE events using useMultiServerSSE
+ * 3. Filters for message.* and part.* events
+ * 4. Dispatches events to the subagents API
+ *
+ * @param options - Session ID and optional directory
+ *
+ * @example
+ * ```typescript
+ * useSubagentSync({ sessionId: "abc123" })
+ * useSubagentSync({ sessionId: "abc123", directory: "/path/to/project" })
+ * ```
+ */
+export function useSubagentSync(options: UseSubagentSyncOptions): void {
+	const { sessionId } = options
+	const stateRef = useRef<SubagentStateRef | null>(null)
+	// Track message-to-session mapping to resolve sessionID for parts
+	const messageToSessionMap = useRef<Map<string, string>>(new Map())
 
+	// Create subagent state on mount
 	useEffect(() => {
-		// Helper to check if a sessionID is a child of our parent
-		// Checks live state each time, so newly registered children are tracked
-		const isChildSession = (sessionID: string) => {
-			const session = useSubagentStore.getState().sessions[sessionID]
-			return session?.parentSessionId === parentSessionId
-		}
+		let mounted = true
 
-		// Subscribe to events and filter for child sessions
-		const unsubscribers = [
-			// Detect new child sessions
-			subscribe("session.created", (event: GlobalEvent) => {
-				const session = (event.payload as any)?.properties?.info
-				if (session?.parentID === parentSessionId) {
-					const match = session.title?.match(/@(\w+)\s+subagent/)
-					const agentName = match?.[1] || "unknown"
-					useSubagentStore.getState().registerSubagent(session.id, parentSessionId, "", agentName)
-					// Track pending child session waiting for parentPartId
-					pendingChildSessions.current.add(session.id)
-				}
-			}),
-
-			// Track session completion
-			subscribe("session.status", (event: GlobalEvent) => {
-				const { sessionID, status } = (event.payload as any)?.properties || {}
-				if (isChildSession(sessionID) && status?.type === "idle") {
-					useSubagentStore.getState().setStatus(sessionID, "completed")
-				}
-			}),
-
-			// Track child messages
-			subscribe("message.created", (event: GlobalEvent) => {
-				const message = (event.payload as any)?.properties?.message
-				if (message && isChildSession(message.sessionID)) {
-					useSubagentStore.getState().addMessage(message.sessionID, message)
-				}
-			}),
-
-			subscribe("message.updated", (event: GlobalEvent) => {
-				const message = (event.payload as any)?.properties?.message
-				if (message && isChildSession(message.sessionID)) {
-					useSubagentStore.getState().updateMessage(message.sessionID, message)
-				}
-			}),
-
-			// Track child parts (CRITICAL for streaming)
-			subscribe("message.part.created", (event: GlobalEvent) => {
-				const part = (event.payload as any)?.properties?.part
-				if (part && isChildSession(part.sessionID)) {
-					useSubagentStore.getState().addPart(part.sessionID, part.messageID, part)
-				}
-			}),
-
-			subscribe("message.part.updated", (event: GlobalEvent) => {
-				const part = (event.payload as any)?.properties?.part
-
-				// Handle child session parts (existing logic)
-				if (part && isChildSession(part.sessionID)) {
-					useSubagentStore.getState().updatePart(part.sessionID, part.messageID, part)
-				}
-
-				// Handle PARENT session parts for Task tool mapping
-				// NOTE: Backend sends sessionID (uppercase D), not sessionId
-				if (
-					part &&
-					part.sessionID === parentSessionId &&
-					part.type === "tool" &&
-					part.tool === "task" &&
-					part.state?.metadata?.sessionID
-				) {
-					const childSessionId = part.state.metadata.sessionID
-					if (pendingChildSessions.current.has(childSessionId)) {
-						useSubagentStore.getState().updateParentPartId(childSessionId, part.id)
-						pendingChildSessions.current.delete(childSessionId)
-					}
-				}
-			}),
-		]
+		subagents.create().then((ref) => {
+			if (mounted) {
+				stateRef.current = ref
+			}
+		})
 
 		return () => {
-			for (const unsub of unsubscribers) {
-				unsub()
-			}
+			mounted = false
 		}
-	}, [parentSessionId, subscribe])
+	}, [])
+
+	// Subscribe to SSE events
+	useMultiServerSSE({
+		onEvent: (event: GlobalEvent) => {
+			if (!stateRef.current) return
+
+			// Filter by directory if specified
+			if (options.directory && event.directory !== options.directory) {
+				return
+			}
+
+			const { type, properties } = event.payload
+
+			// Handle message events
+			if (type === "message.created") {
+				const message = properties as Message
+				// Track message-to-session mapping
+				messageToSessionMap.current.set(message.id, message.sessionID)
+				void subagents.addMessage(stateRef.current, message.sessionID, message)
+			} else if (type === "message.updated") {
+				const message = properties as Message
+				// Update mapping if needed
+				messageToSessionMap.current.set(message.id, message.sessionID)
+				void subagents.updateMessage(stateRef.current, message.sessionID, message)
+			}
+			// Handle part events
+			else if (type === "part.created") {
+				const part = properties as Part
+				const sessionID = resolveSessionIdForPart(part, messageToSessionMap.current)
+				void subagents.addPart(stateRef.current, sessionID, part.messageID, part)
+			} else if (type === "part.updated") {
+				const part = properties as Part
+				const sessionID = resolveSessionIdForPart(part, messageToSessionMap.current)
+				void subagents.updatePart(stateRef.current, sessionID, part.messageID, part)
+			}
+		},
+	})
+}
+
+/**
+ * Resolve session ID for a part
+ *
+ * Parts don't carry sessionID directly, so we need to resolve it from:
+ * 1. The message-to-session mapping (built from message.created events)
+ * 2. The part's sessionID property if present (backend may include it)
+ * 3. Fallback to messageID (may cause issues but prevents crashes)
+ *
+ * @param part - The part to resolve sessionID for
+ * @param messageToSessionMap - Map of messageID to sessionID
+ * @returns The session ID for the part
+ */
+function resolveSessionIdForPart(part: Part, messageToSessionMap: Map<string, string>): string {
+	// Check if sessionID is in the part properties (backend may include it)
+	if ("sessionID" in part && typeof part.sessionID === "string") {
+		return part.sessionID
+	}
+
+	// Look up sessionID from message-to-session mapping
+	const sessionID = messageToSessionMap.get(part.messageID)
+	if (sessionID) {
+		return sessionID
+	}
+
+	// Fallback: use messageID (may cause issues but prevents crashes)
+	// This should rarely happen in practice since message.created comes before part.created
+	return part.messageID
 }

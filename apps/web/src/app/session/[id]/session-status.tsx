@@ -16,65 +16,54 @@
 import { useState, useEffect } from "react"
 import { useSessionStatus, useSSE } from "@/react"
 import { Badge } from "@/components/ui/badge"
-import { Loader } from "@/components/ai-elements/loader"
 import type { GlobalEvent } from "@opencode-ai/sdk/client"
 
 export interface SessionStatusProps {
 	sessionId: string
+	directory?: string
 }
 
 /**
  * SessionStatus component - displays running/idle/error indicator
  */
-export function SessionStatus({ sessionId }: SessionStatusProps) {
-	const { running, isLoading } = useSessionStatus(sessionId)
+export function SessionStatus({ sessionId, directory }: SessionStatusProps) {
+	const { running, isLoading } = useSessionStatus({ sessionId, directory })
 	const [error, setError] = useState<string | null>(null)
-	const { subscribe } = useSSE()
+	const { events } = useSSE({ url: "http://localhost:4056" })
 
-	// Subscribe to session events (error and status) and reset error on sessionId change
+	// Process SSE events for errors and status changes
 	useEffect(() => {
 		// Reset error when sessionId changes
 		setError(null)
+	}, [sessionId])
 
-		const unsubscribers = [
-			subscribe("session.error", (event: GlobalEvent) => {
-				const properties = (event.payload as any)?.properties
+	// Process new events
+	useEffect(() => {
+		for (const event of events) {
+			const payload = event.payload as { type?: string; properties?: Record<string, unknown> }
+			const properties = payload?.properties
 
-				// Ignore malformed events
-				if (!properties) return
+			// Ignore malformed events
+			if (!properties) continue
 
-				// Filter by sessionID
-				if (properties.sessionID !== sessionId) return
+			// Filter by sessionID
+			if (properties.sessionID !== sessionId) continue
 
+			if (payload.type === "session.error") {
 				// Extract error message
-				const errorMessage = properties.error?.message
+				const errorMessage = (properties.error as { message?: string })?.message
 				if (errorMessage) {
 					setError(errorMessage)
 				}
-			}),
-			subscribe("session.status", (event: GlobalEvent) => {
-				const properties = (event.payload as any)?.properties
-
-				// Ignore malformed events
-				if (!properties) return
-
-				// Filter by sessionID
-				if (properties.sessionID !== sessionId) return
-
+			} else if (payload.type === "session.status") {
 				// Clear error when session starts running
-				const status = properties.status
+				const status = properties.status as { running?: boolean } | undefined
 				if (status && typeof status.running === "boolean" && status.running) {
 					setError(null)
 				}
-			}),
-		]
-
-		return () => {
-			for (const unsubscribe of unsubscribers) {
-				unsubscribe()
 			}
 		}
-	}, [sessionId, subscribe])
+	}, [events, sessionId])
 
 	// Error state takes precedence
 	if (error) {

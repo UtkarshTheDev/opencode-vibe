@@ -7,11 +7,16 @@
  * @module api/subagents
  */
 
-import { Effect } from "effect"
+import { Effect, Ref } from "effect"
 import { SubagentAtom } from "../atoms/subagents.js"
 import type { SubagentSession, SubagentState } from "../atoms/subagents.js"
 import type { Message, Part } from "../types/index.js"
-import type { Ref } from "effect"
+
+/**
+ * Type alias for SubagentState reference
+ * Opaque type - consumers shouldn't need to import from "effect"
+ */
+export type SubagentStateRef = Ref.Ref<SubagentState>
 
 /**
  * Subagent API namespace
@@ -22,9 +27,18 @@ export const subagents = {
 	/**
 	 * Create a new subagent state
 	 *
-	 * @returns Promise that resolves to a Ref<SubagentState>
+	 * @returns Promise that resolves to a SubagentStateRef
 	 */
-	create: (): Promise<Ref.Ref<SubagentState>> => Effect.runPromise(SubagentAtom.create()),
+	create: (): Promise<SubagentStateRef> => Effect.runPromise(SubagentAtom.create()),
+
+	/**
+	 * Get the full state from a ref
+	 *
+	 * @param stateRef - Reference to the subagent state
+	 * @returns Promise that resolves to the full state
+	 */
+	getState: (stateRef: SubagentStateRef): Promise<SubagentState> =>
+		Effect.runPromise(Ref.get(stateRef)),
 
 	/**
 	 * Register a new subagent session
@@ -37,7 +51,7 @@ export const subagents = {
 	 * @returns Promise that resolves when registered
 	 */
 	registerSubagent: (
-		stateRef: Ref.Ref<SubagentState>,
+		stateRef: SubagentStateRef,
 		childSessionId: string,
 		parentSessionId: string,
 		parentPartId: string,
@@ -62,7 +76,7 @@ export const subagents = {
 	 * @returns Promise that resolves when updated
 	 */
 	updateParentPartId: (
-		stateRef: Ref.Ref<SubagentState>,
+		stateRef: SubagentStateRef,
 		childSessionId: string,
 		parentPartId: string,
 	): Promise<void> =>
@@ -76,11 +90,8 @@ export const subagents = {
 	 * @param message - Message to add
 	 * @returns Promise that resolves when added
 	 */
-	addMessage: (
-		stateRef: Ref.Ref<SubagentState>,
-		sessionId: string,
-		message: Message,
-	): Promise<void> => Effect.runPromise(SubagentAtom.addMessage(stateRef, sessionId, message)),
+	addMessage: (stateRef: SubagentStateRef, sessionId: string, message: Message): Promise<void> =>
+		Effect.runPromise(SubagentAtom.addMessage(stateRef, sessionId, message)),
 
 	/**
 	 * Update a message in a session
@@ -90,11 +101,8 @@ export const subagents = {
 	 * @param message - Updated message
 	 * @returns Promise that resolves when updated
 	 */
-	updateMessage: (
-		stateRef: Ref.Ref<SubagentState>,
-		sessionId: string,
-		message: Message,
-	): Promise<void> => Effect.runPromise(SubagentAtom.updateMessage(stateRef, sessionId, message)),
+	updateMessage: (stateRef: SubagentStateRef, sessionId: string, message: Message): Promise<void> =>
+		Effect.runPromise(SubagentAtom.updateMessage(stateRef, sessionId, message)),
 
 	/**
 	 * Add a part to a message
@@ -106,7 +114,7 @@ export const subagents = {
 	 * @returns Promise that resolves when added
 	 */
 	addPart: (
-		stateRef: Ref.Ref<SubagentState>,
+		stateRef: SubagentStateRef,
 		sessionId: string,
 		messageId: string,
 		part: Part,
@@ -122,7 +130,7 @@ export const subagents = {
 	 * @returns Promise that resolves when updated
 	 */
 	updatePart: (
-		stateRef: Ref.Ref<SubagentState>,
+		stateRef: SubagentStateRef,
 		sessionId: string,
 		messageId: string,
 		part: Part,
@@ -138,7 +146,7 @@ export const subagents = {
 	 * @returns Promise that resolves when updated
 	 */
 	setStatus: (
-		stateRef: Ref.Ref<SubagentState>,
+		stateRef: SubagentStateRef,
 		sessionId: string,
 		status: SubagentSession["status"],
 	): Promise<void> => Effect.runPromise(SubagentAtom.setStatus(stateRef, sessionId, status)),
@@ -150,7 +158,7 @@ export const subagents = {
 	 * @param partId - ID of the part
 	 * @returns Promise that resolves when toggled
 	 */
-	toggleExpanded: (stateRef: Ref.Ref<SubagentState>, partId: string): Promise<void> =>
+	toggleExpanded: (stateRef: SubagentStateRef, partId: string): Promise<void> =>
 		Effect.runPromise(SubagentAtom.toggleExpanded(stateRef, partId)),
 
 	/**
@@ -160,7 +168,7 @@ export const subagents = {
 	 * @param partId - ID of the part
 	 * @returns Promise that resolves to whether the part is expanded
 	 */
-	isExpanded: (stateRef: Ref.Ref<SubagentState>, partId: string): Promise<boolean> =>
+	isExpanded: (stateRef: SubagentStateRef, partId: string): Promise<boolean> =>
 		Effect.runPromise(SubagentAtom.isExpanded(stateRef, partId)),
 
 	/**
@@ -171,7 +179,7 @@ export const subagents = {
 	 * @returns Promise that resolves to the session or undefined
 	 */
 	getByParentPart: (
-		stateRef: Ref.Ref<SubagentState>,
+		stateRef: SubagentStateRef,
 		partId: string,
 	): Promise<SubagentSession | undefined> =>
 		Effect.runPromise(SubagentAtom.getByParentPart(stateRef, partId)),
@@ -182,7 +190,7 @@ export const subagents = {
 	 * @param stateRef - Reference to the subagent state
 	 * @returns Promise that resolves to all sessions
 	 */
-	getSessions: (stateRef: Ref.Ref<SubagentState>): Promise<Record<string, SubagentSession>> =>
+	getSessions: (stateRef: SubagentStateRef): Promise<Record<string, SubagentSession>> =>
 		Effect.runPromise(SubagentAtom.getSessions(stateRef)),
 
 	/**
@@ -191,7 +199,7 @@ export const subagents = {
 	 * @param stateRef - Reference to the subagent state
 	 * @returns Promise that resolves to the part to session mapping
 	 */
-	getPartToSession: (stateRef: Ref.Ref<SubagentState>): Promise<Record<string, string>> =>
+	getPartToSession: (stateRef: SubagentStateRef): Promise<Record<string, string>> =>
 		Effect.runPromise(SubagentAtom.getPartToSession(stateRef)),
 }
 

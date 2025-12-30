@@ -24,8 +24,8 @@
  */
 
 import { useMemo, useCallback, useEffect, useState } from "react"
+import { commands as commandsApi } from "@opencode-vibe/core/api"
 import type { SlashCommand } from "../types/prompt"
-import { useOpenCode } from "../providers"
 
 /**
  * Builtin slash commands
@@ -54,21 +54,12 @@ const BUILTIN_COMMANDS: SlashCommand[] = [
 ]
 
 /**
- * API response format for custom commands
- */
-interface CustomCommandResponse {
-	name: string
-	description?: string
-	template?: string
-	agent?: string
-	subtask?: boolean
-}
-
-/**
  * useCommands hook
+ *
+ * Uses Promise API from @opencode-vibe/core/api to fetch custom commands.
+ * No longer requires caller from OpenCodeProvider context.
  */
 export function useCommands() {
-	const { caller } = useOpenCode()
 	const [customCommands, setCustomCommands] = useState<SlashCommand[]>([])
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<Error | null>(null)
@@ -80,10 +71,10 @@ export function useCommands() {
 				setLoading(true)
 				setError(null)
 
-				const response = await caller("command.list", {})
+				const response = await commandsApi.list()
 
 				// Map API response to SlashCommand format
-				const mapped: SlashCommand[] = (response ?? []).map((cmd: CustomCommandResponse) => ({
+				const mapped: SlashCommand[] = response.map((cmd) => ({
 					id: `custom.${cmd.name}`,
 					trigger: cmd.name,
 					title: cmd.name,
@@ -104,18 +95,18 @@ export function useCommands() {
 		}
 
 		fetchCustomCommands()
-	}, [caller])
+	}, [])
 
 	// Combine builtin + custom
-	const commands = useMemo(() => [...BUILTIN_COMMANDS, ...customCommands], [customCommands])
+	const allCommands = useMemo(() => [...BUILTIN_COMMANDS, ...customCommands], [customCommands])
 
 	/**
 	 * Get all slash commands (commands with triggers)
 	 * Currently all commands have triggers, but this filters for safety
 	 */
 	const getSlashCommands = useCallback(() => {
-		return commands.filter((cmd) => cmd.trigger)
-	}, [commands])
+		return allCommands.filter((cmd) => cmd.trigger)
+	}, [allCommands])
 
 	/**
 	 * Find command by trigger string
@@ -123,13 +114,13 @@ export function useCommands() {
 	 */
 	const findCommand = useCallback(
 		(trigger: string) => {
-			return commands.find((cmd) => cmd.trigger === trigger)
+			return allCommands.find((cmd) => cmd.trigger === trigger)
 		},
-		[commands],
+		[allCommands],
 	)
 
 	return {
-		commands,
+		commands: allCommands,
 		getSlashCommands,
 		findCommand,
 		loading,

@@ -25,7 +25,7 @@ interface CompactionIndicatorProps {
  * ```
  */
 export function CompactionIndicator({ sessionId }: CompactionIndicatorProps) {
-	const { isCompacting, isAutomatic, progress } = useCompactionState(sessionId)
+	const { isCompacting, isAutomatic, progress } = useCompactionState({ sessionId })
 
 	// Don't render when not compacting
 	if (!isCompacting) {

@@ -1,61 +1,89 @@
 /**
- * useMessages - Hook for accessing messages with real-time updates
+ * useMessages - Bridge Promise API to React state
  *
- * Reads message data from Zustand store. Real-time updates are handled
- * automatically by OpenCodeProvider which subscribes to SSE events and
- * updates the store via handleSSEEvent().
- *
- * @example
- * ```tsx
- * function SessionView({ sessionId }: { sessionId: string }) {
- *   const messages = useMessages(sessionId)
- *
- *   return <div>{messages.map(msg => <Message key={msg.id} {...msg} />)}</div>
- * }
- * ```
- */
-
-import { useOpencodeStore, type Message } from "../store"
-import { useOpenCode } from "../providers"
-
-/**
- * Empty messages constant to avoid re-rendering when no messages exist
- * Using a constant reference prevents new array creation on every render
- */
-const EMPTY_MESSAGES: Message[] = []
-
-/**
- * useMessages - Hook for accessing session messages with real-time updates
- *
- * Reads from Zustand store. Store is automatically updated by OpenCodeProvider's
- * SSE subscription which handles message.created, message.updated, and
- * message.part.updated events.
- *
- * @param sessionId - ID of the session to get messages for
- * @returns Array of messages for the session (reactive, updates automatically)
+ * Wraps messages.list from @opencode-vibe/core/api and manages React state.
+ * Provides loading, error, and data states for message list.
  *
  * @example
  * ```tsx
  * function MessageList({ sessionId }: { sessionId: string }) {
- *   const messages = useMessages(sessionId)
+ *   const { messages, loading, error, refetch } = useMessages({ sessionId })
+ *
+ *   if (loading) return <div>Loading messages...</div>
+ *   if (error) return <div>Error: {error.message}</div>
  *
  *   return (
- *     <div>
- *       {messages.map(msg => <MessageCard key={msg.id} message={msg} />)}
- *     </div>
+ *     <ul>
+ *       {messages.map(m => <li key={m.id}>{m.role}: {m.id}</li>)}
+ *     </ul>
  *   )
  * }
  * ```
  */
-export function useMessages(sessionId: string): Message[] {
-	const { directory } = useOpenCode()
 
-	// Get messages from store (reactive - updates when store changes)
-	// Return stable EMPTY_MESSAGES reference when no messages exist
-	// Store is updated by OpenCodeProvider's SSE subscription
-	const messages = useOpencodeStore(
-		(state) => state.directories[directory]?.messages[sessionId] || EMPTY_MESSAGES,
-	)
+"use client"
 
-	return messages
+import { useState, useEffect, useCallback } from "react"
+import { messages } from "@opencode-vibe/core/api"
+import type { Message } from "@opencode-vibe/core/types"
+
+export interface UseMessagesOptions {
+	/** Session ID to fetch messages for */
+	sessionId: string
+	/** Project directory (optional) */
+	directory?: string
+}
+
+export interface UseMessagesReturn {
+	/** Array of messages, sorted by ID */
+	messages: Message[]
+	/** Loading state */
+	loading: boolean
+	/** Error if fetch failed */
+	error: Error | null
+	/** Refetch messages */
+	refetch: () => void
+}
+
+/**
+ * Hook to fetch message list using Promise API from core
+ *
+ * @param options - Options with sessionId and optional directory
+ * @returns Object with messages, loading, error, and refetch
+ */
+export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
+	const [messageList, setMessageList] = useState<Message[]>([])
+	const [loading, setLoading] = useState(true)
+	const [error, setError] = useState<Error | null>(null)
+
+	const fetch = useCallback(() => {
+		setLoading(true)
+		setError(null)
+
+		messages
+			.list(options.sessionId, options.directory)
+			.then((data: Message[]) => {
+				setMessageList(data)
+				setError(null)
+			})
+			.catch((err: unknown) => {
+				const error = err instanceof Error ? err : new Error(String(err))
+				setError(error)
+				setMessageList([])
+			})
+			.finally(() => {
+				setLoading(false)
+			})
+	}, [options.sessionId, options.directory])
+
+	useEffect(() => {
+		fetch()
+	}, [fetch])
+
+	return {
+		messages: messageList,
+		loading,
+		error,
+		refetch: fetch,
+	}
 }

@@ -13,7 +13,6 @@ import {
 	useSessionStatus,
 	useMultiServerSSE,
 	useSubagentSync,
-	useOpencodeStore,
 } from "@/react"
 import { NewSessionButton } from "./new-session-button"
 import { SessionMessages } from "./session-messages"
@@ -124,26 +123,17 @@ function SessionContent({
 
 	// Subscribe to subagent SSE events for this session
 	// This enables real-time tracking of child sessions spawned via Task tool
-	useSubagentSync(sessionId)
+	useSubagentSync({ sessionId })
 
-	// Hydrate store with initial session data on mount
-	useEffect(() => {
-		const store = useOpencodeStore.getState()
-		// Add session to store if not already present
-		const existing = store.getSession(contextDirectory, sessionId)
-		if (!existing) {
-			store.addSession(contextDirectory, initialSession)
-		}
-	}, [sessionId, initialSession, contextDirectory])
-
-	// Get reactive session data from store (updated via SSE)
-	const session = useSession(sessionId) ?? initialSession
+	// Get reactive session data (uses Promise API)
+	const { session: fetchedSession } = useSession({ sessionId, directory: contextDirectory })
+	const session = fetchedSession ?? initialSession
 
 	// Get session running status for header indicator
-	const { running } = useSessionStatus(sessionId)
+	const { running } = useSessionStatus({ sessionId, directory: contextDirectory })
 
 	// Get reactive messages from store
-	const storeMessages = useMessages(sessionId)
+	const { messages: storeMessages } = useMessages({ sessionId, directory: contextDirectory })
 
 	// Send message hook - use contextDirectory to ensure we route to the right server
 	const { sendMessage, isLoading, error, queueLength } = useSendMessage({
@@ -209,11 +199,11 @@ function SessionContent({
 								title={running ? "Running" : "Idle"}
 							/>
 							<h1 className="text-lg font-semibold text-foreground line-clamp-1">
-								{session.title || "Untitled Session"}
+								{session?.title || "Untitled Session"}
 							</h1>
 						</div>
 						<p className="text-xs text-muted-foreground">
-							{new Date(session.time.updated).toLocaleString()}
+							{session?.time?.updated ? new Date(session.time.updated).toLocaleString() : ""}
 						</p>
 					</div>
 				</header>

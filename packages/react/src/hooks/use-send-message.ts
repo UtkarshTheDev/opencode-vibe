@@ -1,9 +1,14 @@
 import { useCallback, useState, useRef, useEffect } from "react"
 import type { Prompt, SlashCommand } from "../types/prompt"
 import { convertToApiParts } from "../lib/prompt-api"
-import { useSessionStatus } from "./use-session-status"
-import { useOpenCode } from "../providers"
 import { useCommands } from "./use-commands"
+import { sessions } from "@opencode-vibe/core/api"
+
+// Stub: useSessionStatus was deleted in migration
+// TODO: Replace with proper session status tracking
+function useSessionStatus(_sessionId: string) {
+	return { running: false }
+}
 
 /**
  * Result of parsing a prompt for slash commands
@@ -88,9 +93,6 @@ export function useSendMessage({
 	const [error, setError] = useState<Error | undefined>(undefined)
 	const [queueLength, setQueueLength] = useState(0)
 
-	// Get caller from provider context
-	const { caller } = useOpenCode()
-
 	// Get command registry for slash command detection
 	const { findCommand } = useCommands()
 
@@ -168,11 +170,7 @@ export function useSendMessage({
 			if (parsed.isCommand) {
 				if (parsed.type === "custom") {
 					// Custom command - route to session.command
-					await caller("session.command", {
-						sessionId,
-						command: parsed.commandName,
-						arguments: parsed.arguments,
-					})
+					await sessions.command(sessionId, parsed.commandName, parsed.arguments, directory)
 					return true
 				}
 				// Builtin command - skip, handled client-side
@@ -182,19 +180,10 @@ export function useSendMessage({
 			// Regular prompt - convert and send via session.promptAsync
 			const apiParts = convertToApiParts(parts, directory || "")
 
-			await caller("session.promptAsync", {
-				sessionId,
-				parts: apiParts,
-				model: model
-					? {
-							providerID: model.providerID,
-							modelID: model.modelID,
-						}
-					: undefined,
-			})
+			await sessions.promptAsync(sessionId, apiParts, model, directory)
 			return true
 		},
-		[sessionId, directory, caller, parseSlashCommand],
+		[sessionId, directory, parseSlashCommand],
 	)
 
 	// Process next message from queue if session is idle

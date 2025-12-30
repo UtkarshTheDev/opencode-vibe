@@ -1,7 +1,7 @@
 /**
- * useSessionList - Bridge Effect program to React state
+ * useSessionList - Bridge Promise API to React state
  *
- * Wraps SessionAtom.list from @opencode-vibe/core and manages React state.
+ * Wraps sessions.list from @opencode-vibe/core/api and manages React state.
  * Provides loading, error, and data states for session list.
  *
  * @example
@@ -24,8 +24,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Effect } from "effect"
-import { SessionAtom } from "@opencode-vibe/core/atoms"
+import { sessions } from "@opencode-vibe/core/api"
 import type { Session } from "@opencode-vibe/core/types"
 
 export interface UseSessionListOptions {
@@ -45,13 +44,13 @@ export interface UseSessionListReturn {
 }
 
 /**
- * Hook to fetch session list using Effect program from core
+ * Hook to fetch session list using Promise API from core
  *
  * @param options - Options with optional directory
  * @returns Object with sessions, loading, error, and refetch
  */
 export function useSessionList(options: UseSessionListOptions = {}): UseSessionListReturn {
-	const [sessions, setSessions] = useState<Session[]>([])
+	const [sessionList, setSessionList] = useState<Session[]>([])
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<Error | null>(null)
 
@@ -59,15 +58,16 @@ export function useSessionList(options: UseSessionListOptions = {}): UseSessionL
 		setLoading(true)
 		setError(null)
 
-		Effect.runPromise(SessionAtom.list(options.directory))
+		sessions
+			.list(options.directory)
 			.then((data: Session[]) => {
-				setSessions(data)
+				setSessionList(data)
 				setError(null)
 			})
 			.catch((err: unknown) => {
 				const error = err instanceof Error ? err : new Error(String(err))
 				setError(error)
-				setSessions([])
+				setSessionList([])
 			})
 			.finally(() => {
 				setLoading(false)
@@ -79,7 +79,7 @@ export function useSessionList(options: UseSessionListOptions = {}): UseSessionL
 	}, [fetch])
 
 	return {
-		sessions,
+		sessions: sessionList,
 		loading,
 		error,
 		refetch: fetch,
