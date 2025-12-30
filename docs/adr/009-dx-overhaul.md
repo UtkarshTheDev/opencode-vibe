@@ -8,6 +8,41 @@
 
 ---
 
+## ⚠️ CRITICAL: Use Worktree for All Work
+
+**ALL work on this ADR MUST be done in the dx-overhaul worktree, NOT on main.**
+
+```bash
+# Worktree location
+cd /Users/joel/Code/joelhooks/opencode-next/.swarm/worktrees/dx-overhaul
+
+# If worktree doesn't exist, create it:
+swarm_worktree_create(
+  project_path="/Users/joel/Code/joelhooks/opencode-next",
+  task_id="dx-overhaul",
+  start_commit="HEAD"
+)
+
+# When work is complete, merge back:
+swarm_worktree_merge(
+  project_path="/Users/joel/Code/joelhooks/opencode-next",
+  task_id="dx-overhaul"
+)
+```
+
+**Why?**
+- Isolates experimental changes from main
+- Allows parallel work without conflicts
+- Easy rollback if something breaks
+- Main stays deployable at all times
+
+**DO NOT:**
+- Commit directly to main
+- Run swarm workers on main for this ADR
+- Reset main to recover from mistakes (use worktree instead)
+
+---
+
 ## Context
 
 Four comprehensive audits revealed a critical DX problem: **opencode-vibe's React integration is significantly more complex than industry benchmarks like uploadthing.**
