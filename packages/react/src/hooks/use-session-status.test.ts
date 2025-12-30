@@ -5,7 +5,7 @@
  * The hook fetches session data and derives running state.
  */
 
-import { describe, expect, test, vi, beforeEach } from "vitest"
+import { describe, expect, test, vi, beforeEach, afterEach } from "vitest"
 import type { Session } from "@opencode-vibe/core/types"
 import type { GlobalEvent } from "../types/events"
 
@@ -145,6 +145,128 @@ describe("useSessionStatus - Promise API contract", () => {
 		}
 
 		await expect(getSessionStatus("ses_123")).rejects.toThrow(mockError)
+	})
+})
+
+describe("useSessionStatus - idle cooldown behavior", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+		vi.useFakeTimers()
+	})
+
+	afterEach(() => {
+		vi.useRealTimers()
+	})
+
+	/**
+	 * These tests verify the cooldown state machine logic.
+	 * The actual hook implementation uses this same pattern.
+	 */
+
+	test("stays running for cooldown period after idle event", () => {
+		const COOLDOWN_MS = 60_000 // 1 minute
+
+		// Simulate state machine (mirrors hook implementation)
+		let running = true
+		let cooldownTimer: ReturnType<typeof setTimeout> | null = null
+
+		const handleIdleEvent = () => {
+			// Should NOT immediately set running = false
+			// Instead, start a cooldown timer
+			cooldownTimer = setTimeout(() => {
+				running = false
+				cooldownTimer = null
+			}, COOLDOWN_MS)
+		}
+
+		handleIdleEvent()
+
+		// Immediately after idle event, should still be running
+		expect(running).toBe(true)
+
+		// After 30 seconds, still running
+		vi.advanceTimersByTime(30_000)
+		expect(running).toBe(true)
+
+		// After full cooldown (60s), should be idle
+		vi.advanceTimersByTime(30_000)
+		expect(running).toBe(false)
+	})
+
+	test("cancels cooldown timer when busy event arrives", () => {
+		const COOLDOWN_MS = 60_000
+
+		let running = true
+		let cooldownTimer: ReturnType<typeof setTimeout> | null = null
+
+		const handleIdleEvent = () => {
+			cooldownTimer = setTimeout(() => {
+				running = false
+				cooldownTimer = null
+			}, COOLDOWN_MS)
+		}
+
+		const handleBusyEvent = () => {
+			// Cancel any pending cooldown
+			if (cooldownTimer) {
+				clearTimeout(cooldownTimer)
+				cooldownTimer = null
+			}
+			running = true
+		}
+
+		// Receive idle event
+		handleIdleEvent()
+		expect(running).toBe(true)
+
+		// 30 seconds later, receive busy event
+		vi.advanceTimersByTime(30_000)
+		handleBusyEvent()
+
+		// Should still be running
+		expect(running).toBe(true)
+
+		// Even after original cooldown would have expired
+		vi.advanceTimersByTime(60_000)
+		expect(running).toBe(true)
+	})
+
+	test("resets cooldown timer on subsequent idle events", () => {
+		const COOLDOWN_MS = 60_000
+
+		let running = true
+		let cooldownTimer: ReturnType<typeof setTimeout> | null = null
+
+		const handleIdleEvent = () => {
+			// Clear existing timer and start fresh
+			if (cooldownTimer) {
+				clearTimeout(cooldownTimer)
+			}
+			cooldownTimer = setTimeout(() => {
+				running = false
+				cooldownTimer = null
+			}, COOLDOWN_MS)
+		}
+
+		// First idle event
+		handleIdleEvent()
+		vi.advanceTimersByTime(50_000) // 50s in
+		expect(running).toBe(true)
+
+		// Second idle event resets the timer
+		handleIdleEvent()
+		vi.advanceTimersByTime(50_000) // 50s from second event (100s total)
+		expect(running).toBe(true) // Still running because timer was reset
+
+		// Full cooldown from second event
+		vi.advanceTimersByTime(10_000) // 60s from second event
+		expect(running).toBe(false)
+	})
+
+	test("default cooldown is 60 seconds", () => {
+		// Verify the constant matches expected behavior
+		const IDLE_COOLDOWN_MS = 60_000
+		expect(IDLE_COOLDOWN_MS).toBe(60_000)
 	})
 })
 

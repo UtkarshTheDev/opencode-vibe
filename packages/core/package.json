@@ -44,6 +44,10 @@
 		"dist",
 		"src"
 	],
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	},
 	"scripts": {
 		"dev": "tsgo --project tsconfig.build.json --watch",
 		"build": "tsgo --project tsconfig.build.json",

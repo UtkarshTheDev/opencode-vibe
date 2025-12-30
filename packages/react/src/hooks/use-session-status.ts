@@ -4,6 +4,10 @@
  * Fetches session data once on mount, then subscribes to real-time
  * status updates via SSE events.
  *
+ * Features a 60-second "cooldown" after streaming ends - the session
+ * stays marked as "running" for a minute after the last activity,
+ * making the indicator feel more natural and less abrupt.
+ *
  * @example
  * ```tsx
  * function SessionIndicator({ sessionId }: { sessionId: string }) {
@@ -17,20 +21,25 @@
 
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { sessions } from "@opencode-vibe/core/api"
 import { useMultiServerSSE } from "./use-multi-server-sse"
 import type { GlobalEvent } from "../types/events"
+
+/** How long to keep "running" indicator lit after streaming ends */
+const IDLE_COOLDOWN_MS = 60_000 // 1 minute
 
 export interface UseSessionStatusOptions {
 	/** Session ID to track */
 	sessionId: string
 	/** Project directory (optional) */
 	directory?: string
+	/** Override cooldown duration (ms) - mainly for testing */
+	cooldownMs?: number
 }
 
 export interface SessionStatus {
-	/** Whether session is running */
+	/** Whether session is running (includes cooldown period) */
 	running: boolean
 	/** Loading state */
 	isLoading: boolean
@@ -42,7 +51,8 @@ export interface SessionStatus {
  * Hook to track session status
  *
  * Fetches initial status from API, then subscribes to real-time
- * status updates via SSE events.
+ * status updates via SSE events. Includes a cooldown period after
+ * streaming ends to keep the indicator "warm".
  *
  * @param options - Options with sessionId and optional directory
  * @returns Object with running, isLoading, and status
@@ -51,6 +61,19 @@ export function useSessionStatus(options: UseSessionStatusOptions): SessionStatu
 	const [running, setRunning] = useState(false)
 	const [isLoading, setIsLoading] = useState(true)
 	const [status, setStatus] = useState<SessionStatus["status"]>(undefined)
+
+	// Track cooldown timer
+	const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const cooldownMs = options.cooldownMs ?? IDLE_COOLDOWN_MS
+
+	// Cleanup timer on unmount
+	useEffect(() => {
+		return () => {
+			if (cooldownTimerRef.current) {
+				clearTimeout(cooldownTimerRef.current)
+			}
+		}
+	}, [])
 
 	// Initial fetch on mount
 	const fetch = useCallback(() => {
@@ -96,11 +119,28 @@ export function useSessionStatus(options: UseSessionStatusOptions): SessionStatu
 			// Only update if this event is for our session
 			if (props.sessionID !== options.sessionId) return
 
-			// Update running state based on status type
-			const isRunning = props.status.type === "busy"
-			setRunning(isRunning)
+			const isBusy = props.status.type === "busy"
+
+			if (isBusy) {
+				// Busy: cancel any pending cooldown and set running immediately
+				if (cooldownTimerRef.current) {
+					clearTimeout(cooldownTimerRef.current)
+					cooldownTimerRef.current = null
+				}
+				setRunning(true)
+			} else {
+				// Idle: start cooldown timer instead of immediately going idle
+				// Clear any existing timer first (resets the cooldown)
+				if (cooldownTimerRef.current) {
+					clearTimeout(cooldownTimerRef.current)
+				}
+				cooldownTimerRef.current = setTimeout(() => {
+					setRunning(false)
+					cooldownTimerRef.current = null
+				}, cooldownMs)
+			}
 		},
-		[options.sessionId],
+		[options.sessionId, cooldownMs],
 	)
 
 	useMultiServerSSE({ onEvent: handleEvent })

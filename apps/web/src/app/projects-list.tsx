@@ -249,9 +249,12 @@ function deriveSessionStatus(
 	return "completed"
 }
 
+/** How long to keep "running" indicator lit after streaming ends */
+const IDLE_COOLDOWN_MS = 60_000 // 1 minute
+
 /**
  * Hook to manage session statuses across all projects
- * Handles bootstrap and SSE updates
+ * Handles bootstrap and SSE updates with cooldown on idle
  */
 function useSessionStatuses(projects: ProjectWithSessions[]) {
 	// Map of sessionId -> status
@@ -260,6 +263,17 @@ function useSessionStatuses(projects: ProjectWithSessions[]) {
 	const [lastActivity, setLastActivity] = useState<Record<string, number>>({})
 
 	const bootstrappedRef = useRef(false)
+	// Track cooldown timers per session
+	const cooldownTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+
+	// Cleanup all timers on unmount
+	useEffect(() => {
+		return () => {
+			for (const timer of cooldownTimersRef.current.values()) {
+				clearTimeout(timer)
+			}
+		}
+	}, [])
 
 	// Bootstrap session statuses for recent sessions on mount
 	useEffect(() => {
@@ -332,6 +346,13 @@ function useSessionStatuses(projects: ProjectWithSessions[]) {
 				const statusType = event.payload.properties.status?.type
 
 				if (statusType === "busy") {
+					// Cancel any pending cooldown for this session
+					const existingTimer = cooldownTimersRef.current.get(sessionID)
+					if (existingTimer) {
+						clearTimeout(existingTimer)
+						cooldownTimersRef.current.delete(sessionID)
+					}
+
 					setSessionStatuses((prev) => ({
 						...prev,
 						[sessionID]: "running",
@@ -341,14 +362,28 @@ function useSessionStatuses(projects: ProjectWithSessions[]) {
 						[sessionID]: Date.now(),
 					}))
 				} else if (statusType === "idle") {
-					setSessionStatuses((prev) => ({
-						...prev,
-						[sessionID]: "completed",
-					}))
+					// Update last activity immediately
 					setLastActivity((prev) => ({
 						...prev,
 						[sessionID]: Date.now(),
 					}))
+
+					// Clear any existing timer and start fresh cooldown
+					const existingTimer = cooldownTimersRef.current.get(sessionID)
+					if (existingTimer) {
+						clearTimeout(existingTimer)
+					}
+
+					// Start cooldown timer - status changes to completed after delay
+					const timer = setTimeout(() => {
+						setSessionStatuses((prev) => ({
+							...prev,
+							[sessionID]: "completed",
+						}))
+						cooldownTimersRef.current.delete(sessionID)
+					}, IDLE_COOLDOWN_MS)
+
+					cooldownTimersRef.current.set(sessionID, timer)
 				}
 			}
 		}
