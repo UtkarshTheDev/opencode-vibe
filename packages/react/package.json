@@ -26,13 +26,13 @@
 		"src"
 	],
 	"scripts": {
-		"build": "tsc -p tsconfig.build.json",
+		"dev": "tsgo -p tsconfig.build.json --watch",
+		"build": "tsgo -p tsconfig.build.json",
 		"test": "bun test",
-		"type-check": "tsc --noEmit"
+		"type-check": "tsgo --noEmit"
 	},
 	"dependencies": {
 		"@opencode-vibe/core": "workspace:*",
-		"effect": "^3.19.13",
 		"eventsource-parser": "^3.0.0",
 		"fuzzysort": "^3.0.0",
 		"immer": "^10.0.0",

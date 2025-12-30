@@ -7,6 +7,10 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./api": {
+			"types": "./dist/api/index.d.ts",
+			"import": "./dist/api/index.js"
+		},
 		"./router": {
 			"types": "./dist/router/index.d.ts",
 			"import": "./dist/router/index.js"
@@ -41,9 +45,10 @@
 		"src"
 	],
 	"scripts": {
-		"build": "tsc --project tsconfig.build.json",
+		"dev": "tsgo --project tsconfig.build.json --watch",
+		"build": "tsgo --project tsconfig.build.json",
 		"test": "bun test src/",
-		"type-check": "tsc --noEmit"
+		"type-check": "tsgo --noEmit"
 	},
 	"peerDependencies": {
 		"@opencode-ai/sdk": "^1.0.209"
