@@ -34,6 +34,8 @@ export interface UseMessagesOptions {
 	sessionId: string
 	/** Project directory (optional) */
 	directory?: string
+	/** Initial data from server (hydration) - skips initial fetch if provided */
+	initialData?: Message[]
 }
 
 export interface UseMessagesReturn {
@@ -54,15 +56,24 @@ export interface UseMessagesReturn {
  * @returns Object with messages, loading, error, and refetch
  */
 export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
-	const [messageList, setMessageList] = useState<Message[]>([])
-	const [loading, setLoading] = useState(true)
+	// Hydrate from server data if provided, otherwise start empty
+	const [messageList, setMessageList] = useState<Message[]>(options.initialData ?? [])
+	// Skip loading state if we have initial data (already hydrated)
+	const [loading, setLoading] = useState(!options.initialData)
 	const [error, setError] = useState<Error | null>(null)
 
 	// Track sessionId in ref to avoid stale closures in SSE callback
 	const sessionIdRef = useRef(options.sessionId)
 	sessionIdRef.current = options.sessionId
 
+	// Track if we've hydrated to avoid re-fetching on mount
+	const hydratedRef = useRef(!!options.initialData)
+
+	// Track if fetch is in progress to coordinate with SSE
+	const fetchInProgressRef = useRef(false)
+
 	const fetch = useCallback(() => {
+		fetchInProgressRef.current = true
 		setLoading(true)
 		setError(null)
 
@@ -78,12 +89,18 @@ export function useMessages(options: UseMessagesOptions): UseMessagesReturn {
 				setMessageList([])
 			})
 			.finally(() => {
+				fetchInProgressRef.current = false
 				setLoading(false)
 			})
 	}, [options.sessionId, options.directory])
 
-	// Initial fetch
+	// Initial fetch - skip if hydrated from server
 	useEffect(() => {
+		if (hydratedRef.current) {
+			// Already hydrated, don't fetch again
+			hydratedRef.current = false // Allow future refetches
+			return
+		}
 		fetch()
 	}, [fetch])
 

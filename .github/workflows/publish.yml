@@ -29,64 +29,12 @@ jobs:
       - name: Build packages
         run: bun turbo build --filter='./packages/*'
 
-      - name: Read changesets
-        id: changesets_content
-        run: |
-          # Concatenate all changeset content (excluding README)
-          CONTENT=""
-          for f in .changeset/*.md; do
-            [ -f "$f" ] || continue
-            [ "$(basename "$f")" = "README.md" ] && continue
-            CONTENT="$CONTENT$(cat "$f")\n\n"
-          done
-
-          if [ -z "$CONTENT" ]; then
-            echo "has_changesets=false" >> $GITHUB_OUTPUT
-          else
-            echo "has_changesets=true" >> $GITHUB_OUTPUT
-            echo "content<<EOF" >> $GITHUB_OUTPUT
-            echo -e "$CONTENT" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Generate PR title with AI
-        if: steps.changesets_content.outputs.has_changesets == 'true'
-        id: pr_title
-        uses: vercel/ai-action@v2
-        with:
-          model: "anthropic/claude-opus-4-20250514"
-          api-key: ${{ secrets.AI_GATEWAY_API_KEY }}
-          prompt: |
-            Generate a concise PR title (max 60 chars) for this release. Rules:
-            - Start with "release: " prefix
-            - Then lowercase verb (add, fix, improve, etc)
-            - Be specific about what changed
-            - No version numbers
-            - Output ONLY the title, nothing else
-
-            Example: "release: add react hooks and router package"
-
-            Changesets:
-            ${{ steps.changesets_content.outputs.content }}
-
-      - name: Set PR title
-        id: final_title
-        run: |
-          TITLE="${{ steps.pr_title.outputs.text }}"
-          if [ -z "$TITLE" ]; then
-            TITLE="release: update versions"
-          fi
-          echo "title=$TITLE" >> $GITHUB_OUTPUT
-
       - name: Create and publish versions
-        id: changesets
         uses: changesets/action@v1
         with:
           version: bun run ci:version
-          commit: ${{ steps.final_title.outputs.title }}
-          title: ${{ steps.final_title.outputs.title }}
+          commit: "chore: update versions"
+          title: "chore: update versions"
           publish: bun run ci:publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
