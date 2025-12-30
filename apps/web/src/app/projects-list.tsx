@@ -11,7 +11,7 @@
 import { useEffect, useRef, useMemo, memo } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { useOpencodeStore, type SessionStatus } from "@opencode-vibe/react"
+import { useOpencodeStore, type SessionStatusType as SessionStatus } from "@opencode-vibe/react"
 import { useSSE } from "@opencode-vibe/react"
 import { useMultiServerSSE } from "@opencode-vibe/react"
 import { useLiveTime } from "@opencode-vibe/react"

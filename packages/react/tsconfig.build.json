@@ -3,7 +3,9 @@
 	"compilerOptions": {
 		"noEmit": false,
 		"allowImportingTsExtensions": false,
-		"sourceMap": true
+		"sourceMap": true,
+		"declaration": true,
+		"declarationMap": true
 	},
 	"exclude": ["**/*.test.ts", "**/*.test.tsx", "node_modules", "dist"]
 }

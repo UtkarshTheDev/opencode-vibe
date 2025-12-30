@@ -48,9 +48,17 @@ type SupportedUIPart = TextUIPart | ReasoningUIPart | FileUIPart | StepStartUIPa
 /**
  * OpenCode API returns messages as {info: Message, parts: Part[]}
  * This type represents that envelope structure
+ *
+ * Note: We use a loose type for info to support both SDK Message and store Message types
  */
 export type OpenCodeMessage = {
-	info: Message
+	info: {
+		id: string
+		role: string
+		parentID?: string
+		time?: { created: number; completed?: number }
+		finish?: string
+	}
 	parts: Part[]
 }
 

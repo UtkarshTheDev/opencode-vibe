@@ -334,7 +334,7 @@ export const MessageBranchContent = ({ children, ...props }: MessageBranchConten
 	))
 }
 
-export type MessageBranchSelectorProps = HTMLAttributes<HTMLDivElement> & {
+export type MessageBranchSelectorProps = React.ComponentProps<"div"> & {
 	from: UIMessage["role"]
 }
 

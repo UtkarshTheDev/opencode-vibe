@@ -5,7 +5,11 @@ import type { UIMessage, ChatStatus } from "ai"
 import { useMessagesWithParts } from "@opencode-vibe/react"
 import { useSessionStatus } from "@opencode-vibe/react"
 import { useOpencodeStore } from "@opencode-vibe/react"
-import { transformMessages, type ExtendedUIMessage } from "@/lib/transform-messages"
+import {
+	transformMessages,
+	type ExtendedUIMessage,
+	type OpenCodeMessage,
+} from "@/lib/transform-messages"
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message"
 import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai-elements/tool"
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning"
@@ -282,9 +286,10 @@ export function SessionMessages({
 	const { running } = useSessionStatus(sessionId)
 
 	// Transform store messages to UIMessage format (with extended metadata)
+	// Cast to OpenCodeMessage[] - the types are structurally compatible
 	const transformedStoreMessages = useMemo(() => {
 		if (storeMessages.length === 0) return [] as ExtendedUIMessage[]
-		return transformMessages(storeMessages) as ExtendedUIMessage[]
+		return transformMessages(storeMessages as unknown as OpenCodeMessage[]) as ExtendedUIMessage[]
 	}, [storeMessages])
 
 	// Use store messages if available, otherwise fall back to initial messages
