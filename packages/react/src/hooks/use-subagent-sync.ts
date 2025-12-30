@@ -36,10 +36,14 @@ export interface UseSubagentSyncOptions {
  * This hook:
  * 1. Creates a subagent state ref on mount
  * 2. Subscribes to SSE events using useMultiServerSSE
- * 3. Filters for message.* and part.* events
- * 4. Dispatches events to the subagents API
+ * 3. Filters events to only process registered subagent sessions
+ * 4. Handles out-of-order delivery by queueing parts that arrive before their message
+ * 5. Dispatches events to the subagents API
  *
- * @param options - Session ID and optional directory
+ * **Important:** Only processes events for subagents that have been registered via
+ * `subagents.registerSubagent()`. Unregistered sessions are silently ignored.
+ *
+ * @param options - Session ID (currently unused, for future parent-child filtering) and optional directory
  *
  * @example
  * ```typescript
@@ -48,10 +52,11 @@ export interface UseSubagentSyncOptions {
  * ```
  */
 export function useSubagentSync(options: UseSubagentSyncOptions): void {
-	const { sessionId } = options
 	const stateRef = useRef<SubagentStateRef | null>(null)
 	// Track message-to-session mapping to resolve sessionID for parts
 	const messageToSessionMap = useRef<Map<string, string>>(new Map())
+	// Queue parts that arrive before their message
+	const pendingParts = useRef<Map<string, Part[]>>(new Map())
 
 	// Create subagent state on mount
 	useEffect(() => {
@@ -68,6 +73,35 @@ export function useSubagentSync(options: UseSubagentSyncOptions): void {
 		}
 	}, [])
 
+	// Helper to flush pending parts for a message
+	const flushPendingParts = (messageId: string, sessionId: string) => {
+		const pending = pendingParts.current.get(messageId)
+		if (pending && stateRef.current) {
+			for (const part of pending) {
+				void subagents.addPart(stateRef.current, sessionId, part.messageID, part)
+			}
+			pendingParts.current.delete(messageId)
+		}
+	}
+
+	// Helper to handle part events (created or updated)
+	const handlePartEvent = (part: Part, isUpdate: boolean) => {
+		const sessionID = messageToSessionMap.current.get(part.messageID)
+		if (sessionID && stateRef.current) {
+			// We have the message, process the part directly
+			if (isUpdate) {
+				void subagents.updatePart(stateRef.current, sessionID, part.messageID, part)
+			} else {
+				void subagents.addPart(stateRef.current, sessionID, part.messageID, part)
+			}
+		} else {
+			// Message hasn't arrived yet, queue the part
+			const pending = pendingParts.current.get(part.messageID) || []
+			pending.push(part)
+			pendingParts.current.set(part.messageID, pending)
+		}
+	}
+
 	// Subscribe to SSE events
 	useMultiServerSSE({
 		onEvent: (event: GlobalEvent) => {
@@ -83,54 +117,40 @@ export function useSubagentSync(options: UseSubagentSyncOptions): void {
 			// Handle message events
 			if (type === "message.created") {
 				const message = properties as Message
-				// Track message-to-session mapping
-				messageToSessionMap.current.set(message.id, message.sessionID)
-				void subagents.addMessage(stateRef.current, message.sessionID, message)
+
+				// Only process messages from registered subagents
+				subagents.getSessions(stateRef.current).then((sessions) => {
+					if (!sessions[message.sessionID]) {
+						return // Ignore unregistered sessions
+					}
+
+					// Track message-to-session mapping
+					messageToSessionMap.current.set(message.id, message.sessionID)
+					void subagents.addMessage(stateRef.current!, message.sessionID, message)
+
+					// Flush any pending parts for this message
+					flushPendingParts(message.id, message.sessionID)
+				})
 			} else if (type === "message.updated") {
 				const message = properties as Message
-				// Update mapping if needed
-				messageToSessionMap.current.set(message.id, message.sessionID)
-				void subagents.updateMessage(stateRef.current, message.sessionID, message)
+
+				// Only process messages from registered subagents
+				subagents.getSessions(stateRef.current).then((sessions) => {
+					if (!sessions[message.sessionID]) {
+						return // Ignore unregistered sessions
+					}
+
+					// Update mapping if needed
+					messageToSessionMap.current.set(message.id, message.sessionID)
+					void subagents.updateMessage(stateRef.current!, message.sessionID, message)
+				})
 			}
 			// Handle part events
 			else if (type === "part.created") {
-				const part = properties as Part
-				const sessionID = resolveSessionIdForPart(part, messageToSessionMap.current)
-				void subagents.addPart(stateRef.current, sessionID, part.messageID, part)
+				handlePartEvent(properties as Part, false)
 			} else if (type === "part.updated") {
-				const part = properties as Part
-				const sessionID = resolveSessionIdForPart(part, messageToSessionMap.current)
-				void subagents.updatePart(stateRef.current, sessionID, part.messageID, part)
+				handlePartEvent(properties as Part, true)
 			}
 		},
 	})
-}
-
-/**
- * Resolve session ID for a part
- *
- * Parts don't carry sessionID directly, so we need to resolve it from:
- * 1. The message-to-session mapping (built from message.created events)
- * 2. The part's sessionID property if present (backend may include it)
- * 3. Fallback to messageID (may cause issues but prevents crashes)
- *
- * @param part - The part to resolve sessionID for
- * @param messageToSessionMap - Map of messageID to sessionID
- * @returns The session ID for the part
- */
-function resolveSessionIdForPart(part: Part, messageToSessionMap: Map<string, string>): string {
-	// Check if sessionID is in the part properties (backend may include it)
-	if ("sessionID" in part && typeof part.sessionID === "string") {
-		return part.sessionID
-	}
-
-	// Look up sessionID from message-to-session mapping
-	const sessionID = messageToSessionMap.get(part.messageID)
-	if (sessionID) {
-		return sessionID
-	}
-
-	// Fallback: use messageID (may cause issues but prevents crashes)
-	// This should rarely happen in practice since message.created comes before part.created
-	return part.messageID
 }

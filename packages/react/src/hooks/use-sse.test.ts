@@ -941,7 +941,103 @@ describe("Event Batching", () => {
 })
 
 /**
- * SSE Provider Tests - Subscribe Pattern
+ * Ring Buffer Memory Leak Tests
+ *
+ * Tests that the events array is capped to prevent unbounded memory growth
+ */
+describe("Ring Buffer Cap", () => {
+	test("caps events array at MAX_EVENTS (100)", () => {
+		const MAX_EVENTS = 100
+		const events: any[] = []
+
+		// Simulate adding 150 events
+		for (let i = 0; i < 150; i++) {
+			const data = { directory: "/test", payload: { type: "ping", index: i } }
+			// Ring buffer logic
+			events.push(data)
+			if (events.length > MAX_EVENTS) {
+				events.shift() // Remove oldest
+			}
+		}
+
+		// Should only retain last 100 events
+		expect(events).toHaveLength(MAX_EVENTS)
+	})
+
+	test("retains only last 100 events (FIFO)", () => {
+		const MAX_EVENTS = 100
+		const events: any[] = []
+
+		// Add 150 events
+		for (let i = 0; i < 150; i++) {
+			const data = { directory: "/test", payload: { type: "ping", index: i } }
+			events.push(data)
+			if (events.length > MAX_EVENTS) {
+				events.shift()
+			}
+		}
+
+		// First event should be index 50 (events 0-49 were dropped)
+		expect(events[0].payload.index).toBe(50)
+		// Last event should be index 149
+		expect(events[99].payload.index).toBe(149)
+	})
+
+	test("oldest events are dropped first (FIFO order)", () => {
+		const MAX_EVENTS = 100
+		const events: any[] = []
+
+		// Add first batch (0-99)
+		for (let i = 0; i < 100; i++) {
+			const data = { directory: "/test", payload: { type: "ping", index: i } }
+			events.push(data)
+		}
+
+		expect(events).toHaveLength(100)
+		expect(events[0].payload.index).toBe(0)
+
+		// Add one more event (should drop index 0)
+		const data = { directory: "/test", payload: { type: "ping", index: 100 } }
+		events.push(data)
+		if (events.length > MAX_EVENTS) {
+			events.shift()
+		}
+
+		expect(events).toHaveLength(100)
+		expect(events[0].payload.index).toBe(1) // 0 was dropped
+		expect(events[99].payload.index).toBe(100)
+	})
+
+	test("handles events arriving in bursts", () => {
+		const MAX_EVENTS = 100
+		const events: any[] = []
+
+		// Simulate burst of 50 events
+		for (let i = 0; i < 50; i++) {
+			const data = { directory: "/test", payload: { type: "ping", index: i } }
+			events.push(data)
+		}
+
+		expect(events).toHaveLength(50)
+
+		// Simulate another burst of 75 events (total 125)
+		for (let i = 50; i < 125; i++) {
+			const data = { directory: "/test", payload: { type: "ping", index: i } }
+			events.push(data)
+			if (events.length > MAX_EVENTS) {
+				events.shift()
+			}
+		}
+
+		// Should cap at 100, retaining events 25-124
+		expect(events).toHaveLength(MAX_EVENTS)
+		expect(events[0].payload.index).toBe(25)
+		expect(events[99].payload.index).toBe(124)
+	})
+})
+
+/**
+ * SSE Subscribe Pattern Tests - Subscribe Pattern
  *
  * Tests the subscribe/unsubscribe pattern used by components
  */

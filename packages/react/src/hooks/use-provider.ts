@@ -2,7 +2,7 @@
  * useProvider - Hook for fetching and managing OpenCode providers
  *
  * Fetches the list of available AI providers, their connection status,
- * and default model mappings. Supports real-time updates via SSE.
+ * and default model mappings.
  *
  * Usage:
  * ```tsx
@@ -25,25 +25,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react"
-
-// Stub globalClient - app-specific
-const globalClient = {
-	provider: {
-		list: async () => ({
-			data: { all: [], connected: [], default: {} } as any,
-		}),
-	},
-}
-
-// Stub: Old useSSE API was removed, new API is event-based
-// TODO: Replace with proper SSE integration when migrating to apps/web
-function useSSE() {
-	return {
-		subscribe: (_eventType: string, _callback: () => void) => {
-			return () => {} // No-op unsubscribe
-		},
-	}
-}
+import { globalClient } from "@opencode-vibe/core/client"
 
 /**
  * Model definition from SDK
@@ -107,13 +89,10 @@ export interface UseProviderResult {
  * return <ProviderSelector providers={data.all} />
  * ```
  *
- * @example With real-time updates
+ * @example With manual refresh
  * ```tsx
  * function ProviderManager() {
  *   const { data, loading, refetch } = useProvider()
- *
- *   // Provider list auto-updates via SSE subscription
- *   // Manual refetch available for user-triggered refresh
  *
  *   return (
  *     <div>
@@ -128,8 +107,6 @@ export function useProvider(): UseProviderResult {
 	const [data, setData] = useState<ProviderData | null>(null)
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<Error | null>(null)
-
-	const { subscribe } = useSSE()
 
 	// Fetch provider data
 	const fetchProviders = useCallback(async () => {
@@ -161,16 +138,6 @@ export function useProvider(): UseProviderResult {
 	useEffect(() => {
 		fetchProviders()
 	}, [fetchProviders])
-
-	// Subscribe to real-time provider updates via SSE
-	useEffect(() => {
-		const unsubscribe = subscribe("provider.updated", () => {
-			// Refetch when providers change (new provider added, OAuth completed, etc.)
-			fetchProviders()
-		})
-
-		return unsubscribe
-	}, [subscribe, fetchProviders])
 
 	return {
 		data,

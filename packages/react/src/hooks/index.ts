@@ -2,7 +2,7 @@
  * React hooks for OpenCode
  */
 
-// Effect-based hooks (bridge Effect programs to React state)
+// === Data Fetching ===
 export {
 	useSessionList,
 	type UseSessionListOptions,
@@ -48,6 +48,9 @@ export {
 	type UseCurrentServerReturn,
 	type ServerInfo,
 } from "./use-servers"
+export { useProviders } from "./use-providers"
+
+// === Real-time (SSE) ===
 export {
 	useSSE,
 	type UseSSEOptions,
@@ -57,6 +60,9 @@ export {
 	useMultiServerSSE,
 	type UseMultiServerSSEOptions,
 } from "./use-multi-server-sse"
+export { useSubscription } from "./use-subscription"
+
+// === Subagents ===
 export {
 	useSubagents,
 	type UseSubagentsReturn,
@@ -69,6 +75,12 @@ export {
 	type UseSubagentReturn,
 } from "./use-subagent"
 export {
+	useSubagentSync,
+	type UseSubagentSyncOptions,
+} from "./use-subagent-sync"
+
+// === State Management ===
+export {
 	useContextUsage,
 	formatTokens,
 	type UseContextUsageOptions,
@@ -80,7 +92,12 @@ export {
 	type CompactionState,
 	type CompactionProgress,
 } from "./use-compaction-state"
-export {
-	useSubagentSync,
-	type UseSubagentSyncOptions,
-} from "./use-subagent-sync"
+
+// === Actions ===
+export { useSendMessage } from "./use-send-message"
+export { useCreateSession } from "./use-create-session"
+export { useCommands } from "./use-commands"
+
+// === Utilities ===
+export { useLiveTime } from "./use-live-time"
+export { useFileSearch } from "./use-file-search"

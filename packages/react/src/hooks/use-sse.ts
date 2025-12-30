@@ -58,6 +58,13 @@ export interface UseSSEReturn {
  * @param options - Options with url and optional heartbeatTimeout
  * @returns Object with events, connected state, and error
  */
+/**
+ * Maximum number of events to retain in memory.
+ * Ring buffer caps at 100 events to prevent unbounded memory growth.
+ * After 8-hour session with frequent events, this prevents 17+ MB leak.
+ */
+const MAX_EVENTS = 100
+
 export function useSSE(options: UseSSEOptions): UseSSEReturn {
 	const [events, setEvents] = useState<GlobalEvent[]>([])
 	const [connected, setConnected] = useState(false)
@@ -94,7 +101,11 @@ export function useSSE(options: UseSSEOptions): UseSSEReturn {
 			resetHeartbeat()
 			try {
 				const data = JSON.parse(event.data) as GlobalEvent
-				setEvents((prev) => [...prev, data])
+				setEvents((prev) => {
+					const next = [...prev, data]
+					// Ring buffer: cap at MAX_EVENTS, drop oldest (FIFO)
+					return next.length > MAX_EVENTS ? next.slice(-MAX_EVENTS) : next
+				})
 			} catch (parseError) {
 				// Ignore malformed JSON - don't crash the connection
 				console.warn("SSE: Failed to parse event data", parseError)

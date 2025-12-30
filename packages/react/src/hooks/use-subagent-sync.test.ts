@@ -31,6 +31,7 @@ vi.mock("@opencode-vibe/core/api", () => ({
 		addPart: vi.fn(),
 		updatePart: vi.fn(),
 		setStatus: vi.fn(),
+		getSessions: vi.fn(),
 	},
 }))
 
@@ -44,6 +45,8 @@ describe("useSubagentSync", () => {
 		// Mock the Effect Ref type - we don't need the actual implementation
 		mockStateRef = {} as SubagentStateRef
 		;(subagents.create as ReturnType<typeof vi.fn>).mockResolvedValue(mockStateRef)
+		// Default: no registered subagents
+		;(subagents.getSessions as ReturnType<typeof vi.fn>).mockResolvedValue({})
 	})
 
 	it("creates a subagent state ref on mount", async () => {
@@ -64,6 +67,19 @@ describe("useSubagentSync", () => {
 
 	it("calls addMessage when message.created event received", async () => {
 		let capturedOnEvent: ((event: any) => void) | undefined
+
+		// Mock getSessions to include the session
+		;(subagents.getSessions as ReturnType<typeof vi.fn>).mockResolvedValue({
+			"child-session": {
+				id: "child-session",
+				parentSessionId: "parent-session",
+				parentPartId: "part-123",
+				agentName: "TestAgent",
+				status: "running",
+				messages: [],
+				parts: {},
+			},
+		})
 
 		;(useMultiServerSSE as ReturnType<typeof vi.fn>).mockImplementation((options) => {
 			capturedOnEvent = options?.onEvent
@@ -100,6 +116,19 @@ describe("useSubagentSync", () => {
 	it("calls updateMessage when message.updated event received", async () => {
 		let capturedOnEvent: ((event: any) => void) | undefined
 
+		// Mock getSessions to include the session
+		;(subagents.getSessions as ReturnType<typeof vi.fn>).mockResolvedValue({
+			"child-session": {
+				id: "child-session",
+				parentSessionId: "parent-session",
+				parentPartId: "part-123",
+				agentName: "TestAgent",
+				status: "running",
+				messages: [],
+				parts: {},
+			},
+		})
+
 		;(useMultiServerSSE as ReturnType<typeof vi.fn>).mockImplementation((options) => {
 			capturedOnEvent = options?.onEvent
 		})
@@ -133,8 +162,21 @@ describe("useSubagentSync", () => {
 		})
 	})
 
-	it("calls addPart when part.created event received", async () => {
+	it("calls addPart when part.created event received (after message)", async () => {
 		let capturedOnEvent: ((event: any) => void) | undefined
+
+		// Mock getSessions to include the session
+		;(subagents.getSessions as ReturnType<typeof vi.fn>).mockResolvedValue({
+			"child-session": {
+				id: "child-session",
+				parentSessionId: "parent-session",
+				parentPartId: "part-123",
+				agentName: "TestAgent",
+				status: "running",
+				messages: [],
+				parts: {},
+			},
+		})
 
 		;(useMultiServerSSE as ReturnType<typeof vi.fn>).mockImplementation((options) => {
 			capturedOnEvent = options?.onEvent
@@ -146,6 +188,29 @@ describe("useSubagentSync", () => {
 			expect(subagents.create).toHaveBeenCalled()
 		})
 
+		// First send the message so we have the mapping
+		const message: Message = {
+			id: "msg-123",
+			sessionID: "child-session",
+			role: "user",
+			time: { created: Date.now() },
+		}
+
+		const messageEvent = {
+			directory: "/test/dir",
+			payload: {
+				type: "message.created",
+				properties: message,
+			},
+		}
+
+		capturedOnEvent?.(messageEvent)
+
+		await waitFor(() => {
+			expect(subagents.addMessage).toHaveBeenCalled()
+		})
+
+		// Now send the part
 		const part: Part = {
 			id: "part-123",
 			messageID: "msg-123",
@@ -164,17 +229,25 @@ describe("useSubagentSync", () => {
 		capturedOnEvent?.(event)
 
 		await waitFor(() => {
-			expect(subagents.addPart).toHaveBeenCalledWith(
-				mockStateRef,
-				expect.any(String),
-				"msg-123",
-				part,
-			)
+			expect(subagents.addPart).toHaveBeenCalledWith(mockStateRef, "child-session", "msg-123", part)
 		})
 	})
 
-	it("calls updatePart when part.updated event received", async () => {
+	it("calls updatePart when part.updated event received (after message)", async () => {
 		let capturedOnEvent: ((event: any) => void) | undefined
+
+		// Mock getSessions to include the session
+		;(subagents.getSessions as ReturnType<typeof vi.fn>).mockResolvedValue({
+			"child-session": {
+				id: "child-session",
+				parentSessionId: "parent-session",
+				parentPartId: "part-123",
+				agentName: "TestAgent",
+				status: "running",
+				messages: [],
+				parts: {},
+			},
+		})
 
 		;(useMultiServerSSE as ReturnType<typeof vi.fn>).mockImplementation((options) => {
 			capturedOnEvent = options?.onEvent
@@ -186,6 +259,29 @@ describe("useSubagentSync", () => {
 			expect(subagents.create).toHaveBeenCalled()
 		})
 
+		// First send the message so we have the mapping
+		const message: Message = {
+			id: "msg-123",
+			sessionID: "child-session",
+			role: "user",
+			time: { created: Date.now() },
+		}
+
+		const messageEvent = {
+			directory: "/test/dir",
+			payload: {
+				type: "message.created",
+				properties: message,
+			},
+		}
+
+		capturedOnEvent?.(messageEvent)
+
+		await waitFor(() => {
+			expect(subagents.addMessage).toHaveBeenCalled()
+		})
+
+		// Now send the part update
 		const part: Part = {
 			id: "part-123",
 			messageID: "msg-123",
@@ -206,7 +302,7 @@ describe("useSubagentSync", () => {
 		await waitFor(() => {
 			expect(subagents.updatePart).toHaveBeenCalledWith(
 				mockStateRef,
-				expect.any(String),
+				"child-session",
 				"msg-123",
 				part,
 			)
@@ -247,6 +343,28 @@ describe("useSubagentSync", () => {
 
 	it("filters events by directory when directory option provided", async () => {
 		let capturedOnEvent: ((event: any) => void) | undefined
+
+		// Mock getSessions to include both sessions
+		;(subagents.getSessions as ReturnType<typeof vi.fn>).mockResolvedValue({
+			"child-session": {
+				id: "child-session",
+				parentSessionId: "parent-session",
+				parentPartId: "part-123",
+				agentName: "TestAgent",
+				status: "running",
+				messages: [],
+				parts: {},
+			},
+			"child-session-2": {
+				id: "child-session-2",
+				parentSessionId: "parent-session",
+				parentPartId: "part-456",
+				agentName: "TestAgent2",
+				status: "running",
+				messages: [],
+				parts: {},
+			},
+		})
 
 		;(useMultiServerSSE as ReturnType<typeof vi.fn>).mockImplementation((options) => {
 			capturedOnEvent = options?.onEvent
@@ -300,6 +418,157 @@ describe("useSubagentSync", () => {
 				mockStateRef,
 				"child-session-2",
 				expect.objectContaining({ id: "msg-456" }),
+			)
+		})
+	})
+
+	it("only processes messages from registered subagent sessions", async () => {
+		let capturedOnEvent: ((event: any) => void) | undefined
+
+		// Mock getSessions to return registered subagents
+		;(subagents.getSessions as ReturnType<typeof vi.fn>).mockResolvedValue({
+			"registered-child": {
+				id: "registered-child",
+				parentSessionId: "parent-session",
+				parentPartId: "part-123",
+				agentName: "TestAgent",
+				status: "running",
+				messages: [],
+				parts: {},
+			},
+		})
+
+		;(useMultiServerSSE as ReturnType<typeof vi.fn>).mockImplementation((options) => {
+			capturedOnEvent = options?.onEvent
+		})
+
+		renderHook(() => useSubagentSync({ sessionId: "parent-session" }))
+
+		await waitFor(() => {
+			expect(subagents.create).toHaveBeenCalled()
+		})
+
+		// Message from unregistered session - should be ignored
+		const unregisteredEvent = {
+			directory: "/test/dir",
+			payload: {
+				type: "message.created",
+				properties: {
+					id: "msg-unregistered",
+					sessionID: "unregistered-child",
+					role: "user",
+					time: { created: Date.now() },
+				} as Message,
+			},
+		}
+
+		capturedOnEvent?.(unregisteredEvent)
+
+		await new Promise((resolve) => setTimeout(resolve, 50))
+
+		// Message from registered session - should be processed
+		const registeredEvent = {
+			directory: "/test/dir",
+			payload: {
+				type: "message.created",
+				properties: {
+					id: "msg-registered",
+					sessionID: "registered-child",
+					role: "user",
+					time: { created: Date.now() },
+				} as Message,
+			},
+		}
+
+		capturedOnEvent?.(registeredEvent)
+
+		await waitFor(() => {
+			// Only the registered session's message should be processed
+			expect(subagents.addMessage).toHaveBeenCalledTimes(1)
+			expect(subagents.addMessage).toHaveBeenCalledWith(
+				mockStateRef,
+				"registered-child",
+				expect.objectContaining({ id: "msg-registered" }),
+			)
+		})
+	})
+
+	it("queues parts that arrive before their message", async () => {
+		let capturedOnEvent: ((event: any) => void) | undefined
+
+		// Mock getSessions to return registered subagent
+		;(subagents.getSessions as ReturnType<typeof vi.fn>).mockResolvedValue({
+			"child-session": {
+				id: "child-session",
+				parentSessionId: "parent-session",
+				parentPartId: "part-123",
+				agentName: "TestAgent",
+				status: "running",
+				messages: [],
+				parts: {},
+			},
+		})
+
+		;(useMultiServerSSE as ReturnType<typeof vi.fn>).mockImplementation((options) => {
+			capturedOnEvent = options?.onEvent
+		})
+
+		renderHook(() => useSubagentSync({ sessionId: "parent-session" }))
+
+		await waitFor(() => {
+			expect(subagents.create).toHaveBeenCalled()
+		})
+
+		// Part arrives BEFORE message (out-of-order)
+		const partEvent = {
+			directory: "/test/dir",
+			payload: {
+				type: "part.created",
+				properties: {
+					id: "part-123",
+					messageID: "msg-123",
+					type: "text",
+					content: "Hello",
+				} as Part,
+			},
+		}
+
+		capturedOnEvent?.(partEvent)
+
+		// Part should be queued, not processed yet
+		await new Promise((resolve) => setTimeout(resolve, 50))
+		expect(subagents.addPart).not.toHaveBeenCalled()
+
+		// Now message arrives
+		const messageEvent = {
+			directory: "/test/dir",
+			payload: {
+				type: "message.created",
+				properties: {
+					id: "msg-123",
+					sessionID: "child-session",
+					role: "user",
+					time: { created: Date.now() },
+				} as Message,
+			},
+		}
+
+		capturedOnEvent?.(messageEvent)
+
+		await waitFor(() => {
+			// Message should be added
+			expect(subagents.addMessage).toHaveBeenCalledWith(
+				mockStateRef,
+				"child-session",
+				expect.objectContaining({ id: "msg-123" }),
+			)
+
+			// Queued part should be flushed and added
+			expect(subagents.addPart).toHaveBeenCalledWith(
+				mockStateRef,
+				"child-session",
+				"msg-123",
+				expect.objectContaining({ id: "part-123" }),
 			)
 		})
 	})
