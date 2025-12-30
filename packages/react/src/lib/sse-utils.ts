@@ -60,10 +60,11 @@ export function matchesSessionId(event: GlobalEvent, sessionId?: string): boolea
  *
  * Different event types store the entity in different places:
  * - payload.properties.info (most common - Message, Session, etc.)
- * - payload.properties.item (Part events)
+ * - payload.properties.item (some events)
+ * - payload.properties.part (Part events - message.part.created/updated)
  * - payload.properties.message (some message events)
  *
- * Priority order: info > item > message
+ * Priority order: info > item > part > message
  *
  * @param payload - The event payload
  * @returns The extracted item or undefined if not found
@@ -75,12 +76,15 @@ export function extractEventItem(payload: any): any {
 
 	const props = payload.properties as Record<string, any>
 
-	// Priority order: info > item > message
+	// Priority order: info > item > part > message
 	if (props.info !== undefined) {
 		return props.info
 	}
 	if (props.item !== undefined) {
 		return props.item
+	}
+	if (props.part !== undefined) {
+		return props.part
 	}
 	if (props.message !== undefined) {
 		return props.message

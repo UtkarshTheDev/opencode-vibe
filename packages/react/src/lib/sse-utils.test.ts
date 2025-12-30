@@ -190,4 +190,58 @@ describe("extractEventItem", () => {
 		}
 		expect(extractEventItem(payload)).toEqual({ source: "message" })
 	})
+
+	it("extracts item from payload.properties.part (message.part.updated events)", () => {
+		const payload = {
+			type: "message.part.updated",
+			properties: {
+				part: {
+					id: "part-123",
+					type: "tool",
+					tool: "task",
+					state: {
+						status: "running",
+						metadata: {
+							summary: [{ id: "sub-1", tool: "read", state: { status: "completed" } }],
+						},
+					},
+				},
+			},
+		}
+		expect(extractEventItem(payload)).toEqual({
+			id: "part-123",
+			type: "tool",
+			tool: "task",
+			state: {
+				status: "running",
+				metadata: {
+					summary: [{ id: "sub-1", tool: "read", state: { status: "completed" } }],
+				},
+			},
+		})
+	})
+
+	it("prioritizes info > item > part > message", () => {
+		const payload = {
+			type: "test",
+			properties: {
+				info: { source: "info" },
+				item: { source: "item" },
+				part: { source: "part" },
+				message: { source: "message" },
+			},
+		}
+		expect(extractEventItem(payload)).toEqual({ source: "info" })
+	})
+
+	it("falls back to part if info and item are missing", () => {
+		const payload = {
+			type: "message.part.updated",
+			properties: {
+				part: { source: "part" },
+				message: { source: "message" },
+			},
+		}
+		expect(extractEventItem(payload)).toEqual({ source: "part" })
+	})
 })

@@ -145,10 +145,10 @@ export function useSubagentSync(options: UseSubagentSyncOptions): void {
 					void subagents.updateMessage(stateRef.current!, message.sessionID, message)
 				})
 			}
-			// Handle part events
-			else if (type === "part.created") {
+			// Handle part events (note: event types are "message.part.created", not "part.created")
+			else if (type === "message.part.created") {
 				handlePartEvent(properties as Part, false)
-			} else if (type === "part.updated") {
+			} else if (type === "message.part.updated") {
 				handlePartEvent(properties as Part, true)
 			}
 		},
