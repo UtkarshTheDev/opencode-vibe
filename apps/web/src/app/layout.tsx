@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next"
-import { Suspense } from "react"
 import { Geist, Geist_Mono } from "next/font/google"
-import { Providers } from "./providers"
+import { LayoutClient } from "./layout-client"
 import { ErrorBoundary } from "@/components/error-boundary"
 import "./globals.css"
 
@@ -71,15 +70,7 @@ export default function RootLayout({
 				className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
 			>
 				<ErrorBoundary>
-					<Suspense
-						fallback={
-							<div className="h-dvh flex items-center justify-center">
-								<div className="text-muted-foreground">Loading...</div>
-							</div>
-						}
-					>
-						<Providers>{children}</Providers>
-					</Suspense>
+					<LayoutClient>{children}</LayoutClient>
 				</ErrorBoundary>
 			</body>
 		</html>

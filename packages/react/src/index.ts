@@ -109,3 +109,11 @@ export {
 	type Todo,
 	type GlobalEvent,
 } from "./store"
+
+// SSR Plugin (ADR-013 Phase 2: Provider-free architecture)
+export {
+	OpencodeSSRPlugin,
+	type OpencodeConfig,
+	type OpencodeSSRPluginProps,
+} from "./next-ssr-plugin"
+export { generateOpencodeHelpers, getOpencodeConfig } from "./factory"
