@@ -8,17 +8,17 @@ describe("getServerForDirectory", () => {
 		{
 			port: 4056,
 			directory: "/home/user/project-a",
-			url: "http://127.0.0.1:4056",
+			url: "/api/opencode/4056",
 		},
 		{
 			port: 4057,
 			directory: "/home/user/project-b",
-			url: "http://127.0.0.1:4057",
+			url: "/api/opencode/4057",
 		},
 		{
 			port: 4058,
 			directory: "/home/user/project-a", // Duplicate directory
-			url: "http://127.0.0.1:4058",
+			url: "/api/opencode/4058",
 		},
 	]
 
@@ -34,13 +34,13 @@ describe("getServerForDirectory", () => {
 
 	it("returns server URL for exact directory match", () => {
 		const result = getServerForDirectory("/home/user/project-b", mockServers)
-		expect(result).toBe("http://127.0.0.1:4057")
+		expect(result).toBe("/api/opencode/4057")
 	})
 
 	it("returns first server when multiple servers for same directory", () => {
 		const result = getServerForDirectory("/home/user/project-a", mockServers)
 		// Should return the first matching server (port 4056)
-		expect(result).toBe("http://127.0.0.1:4056")
+		expect(result).toBe("/api/opencode/4056")
 	})
 
 	it("handles empty directory string", () => {
@@ -53,17 +53,17 @@ describe("getServerForDirectory", () => {
 			{
 				port: 4056,
 				directory: "/home/user/project-a/",
-				url: "http://127.0.0.1:4056",
+				url: "/api/opencode/4056",
 			},
 		]
 
 		// Query without trailing slash should still match
 		const result1 = getServerForDirectory("/home/user/project-a", serversWithTrailingSlash)
-		expect(result1).toBe("http://127.0.0.1:4056")
+		expect(result1).toBe("/api/opencode/4056")
 
 		// Query with trailing slash should match directory without trailing slash
 		const result2 = getServerForDirectory("/home/user/project-a/", mockServers)
-		expect(result2).toBe("http://127.0.0.1:4056")
+		expect(result2).toBe("/api/opencode/4056")
 	})
 
 	it("is case-sensitive for directory matching", () => {
@@ -77,12 +77,12 @@ describe("getServerForSession", () => {
 		{
 			port: 4056,
 			directory: "/home/user/project-a",
-			url: "http://127.0.0.1:4056",
+			url: "/api/opencode/4056",
 		},
 		{
 			port: 4057,
 			directory: "/home/user/project-b",
-			url: "http://127.0.0.1:4057",
+			url: "/api/opencode/4057",
 		},
 	]
 
@@ -104,7 +104,7 @@ describe("getServerForSession", () => {
 			mockServers,
 			sessionToPort,
 		)
-		expect(result).toBe("http://127.0.0.1:4056")
+		expect(result).toBe("/api/opencode/4056")
 	})
 
 	it("falls back to directory match when session not in cache", () => {
@@ -114,7 +114,7 @@ describe("getServerForSession", () => {
 			mockServers,
 			sessionToPort,
 		)
-		expect(result).toBe("http://127.0.0.1:4057")
+		expect(result).toBe("/api/opencode/4057")
 	})
 
 	it("returns default when neither session nor directory match", () => {
@@ -136,7 +136,7 @@ describe("getServerForSession", () => {
 			sessionToPort,
 		)
 		// Should return the cached session port (4057), not directory match (4056)
-		expect(result).toBe("http://127.0.0.1:4057")
+		expect(result).toBe("/api/opencode/4057")
 	})
 
 	it("handles cached session for server that no longer exists", () => {
@@ -151,7 +151,7 @@ describe("getServerForSession", () => {
 			deadSessionCache,
 		)
 		// Should fall back to directory match since cached port doesn't exist
-		expect(result).toBe("http://127.0.0.1:4056")
+		expect(result).toBe("/api/opencode/4056")
 	})
 
 	it("works with empty session cache", () => {
@@ -162,12 +162,12 @@ describe("getServerForSession", () => {
 			new Map(),
 		)
 		// Should fall back to directory match
-		expect(result).toBe("http://127.0.0.1:4056")
+		expect(result).toBe("/api/opencode/4056")
 	})
 
 	it("works with undefined session cache (optional parameter)", () => {
 		const result = getServerForSession("session-123", "/home/user/project-a", mockServers)
 		// Should fall back to directory match
-		expect(result).toBe("http://127.0.0.1:4056")
+		expect(result).toBe("/api/opencode/4056")
 	})
 })

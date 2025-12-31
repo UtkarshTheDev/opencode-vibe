@@ -29,12 +29,12 @@ describe("ServerDiscovery", () => {
 			{
 				port: 4056,
 				directory: "/Users/joel/Code/project1",
-				url: "http://localhost:4056",
+				url: "/api/opencode/4056",
 			},
 			{
 				port: 4057,
 				directory: "/Users/joel/Code/project2",
-				url: "http://localhost:4057",
+				url: "/api/opencode/4057",
 			},
 		])
 	})
@@ -142,12 +142,12 @@ describe("ServerDiscovery", () => {
 			{
 				port: 4056,
 				directory: "/Users/joel/Code/project1",
-				url: "http://localhost:4056",
+				url: "/api/opencode/4056",
 			},
 			{
 				port: 4058,
 				directory: "/Users/joel/Code/project3",
-				url: "http://localhost:4058",
+				url: "/api/opencode/4058",
 			},
 		])
 	})

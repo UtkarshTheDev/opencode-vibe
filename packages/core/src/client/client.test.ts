@@ -24,31 +24,31 @@ describe("getClientUrl", () => {
 
 	it("routes to directory server when available", () => {
 		const context: RoutingContext = {
-			servers: [{ port: 4057, directory: "/path/to/project", url: "http://127.0.0.1:4057" }],
+			servers: [{ port: 4057, directory: "/path/to/project", url: "/api/opencode/4057" }],
 		}
 		const url = getClientUrl("/path/to/project", undefined, context)
-		expect(url).toBe("http://127.0.0.1:4057")
+		expect(url).toBe("/api/opencode/4057")
 	})
 
 	it("routes to session server when cached", () => {
 		const sessionToPort = new Map([["ses_123", 4058]])
 		const context: RoutingContext = {
 			servers: [
-				{ port: 4057, directory: "/path/to/project", url: "http://127.0.0.1:4057" },
-				{ port: 4058, directory: "/other/project", url: "http://127.0.0.1:4058" },
+				{ port: 4057, directory: "/path/to/project", url: "/api/opencode/4057" },
+				{ port: 4058, directory: "/other/project", url: "/api/opencode/4058" },
 			],
 			sessionToPort,
 		}
 		const url = getClientUrl("/path/to/project", "ses_123", context)
-		expect(url).toBe("http://127.0.0.1:4058")
+		expect(url).toBe("/api/opencode/4058")
 	})
 
 	it("falls back to directory when session not cached", () => {
 		const context: RoutingContext = {
-			servers: [{ port: 4057, directory: "/path/to/project", url: "http://127.0.0.1:4057" }],
+			servers: [{ port: 4057, directory: "/path/to/project", url: "/api/opencode/4057" }],
 		}
 		const url = getClientUrl("/path/to/project", "ses_unknown", context)
-		expect(url).toBe("http://127.0.0.1:4057")
+		expect(url).toBe("/api/opencode/4057")
 	})
 
 	it("exports OPENCODE_URL constant", () => {

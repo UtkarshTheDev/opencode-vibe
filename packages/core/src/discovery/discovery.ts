@@ -59,7 +59,7 @@ function transformServer(raw: RawServerInfo): ServerInfo {
 	return {
 		port: raw.port,
 		directory: raw.directory,
-		url: `http://localhost:${raw.port}`,
+		url: `/api/opencode/${raw.port}`,
 	}
 }
 
