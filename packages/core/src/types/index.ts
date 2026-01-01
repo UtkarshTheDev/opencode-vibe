@@ -14,3 +14,12 @@ export type {
 } from "./prompt.js"
 
 export type { Session, Message, Part } from "./domain.js"
+
+export type {
+	GlobalEvent,
+	SessionStatus,
+	DiscoveredServer,
+	ConnectionState,
+	ConnectionStateExtended,
+	SSEState,
+} from "./events.js"

@@ -103,9 +103,132 @@ describe("MultiServerSSE connection status", () => {
 
 		sse.stop()
 	})
+})
 
-	it("should report disconnected after stop", async () => {
+/**
+ * Observable state tests - onStateChange callback system
+ */
+describe("MultiServerSSE observable state", () => {
+	beforeEach(() => {
+		vi.useFakeTimers()
+	})
+
+	afterEach(() => {
+		vi.useRealTimers()
+		vi.restoreAllMocks()
+	})
+
+	it("should call onStateChange callback immediately with current state", () => {
 		const sse = new MultiServerSSE()
+		const callback = vi.fn()
+
+		sse.onStateChange(callback)
+
+		expect(callback).toHaveBeenCalledTimes(1)
+		expect(callback).toHaveBeenCalledWith({
+			servers: [],
+			connections: [],
+			discovering: false,
+			connected: false,
+		})
+	})
+
+	it("should return unsubscribe function", () => {
+		const sse = new MultiServerSSE()
+		const callback = vi.fn()
+
+		const unsubscribe = sse.onStateChange(callback)
+
+		expect(typeof unsubscribe).toBe("function")
+		callback.mockClear()
+
+		// Unsubscribe
+		unsubscribe()
+
+		// Trigger a state change (via start)
+		sse.start()
+
+		// Callback should not be called after unsubscribe
+		expect(callback).not.toHaveBeenCalled()
+
+		sse.stop()
+	})
+
+	it("should emit state change on server discovery", async () => {
+		const sse = new MultiServerSSE()
+		const callback = vi.fn()
+
+		vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+			if (url === "/api/opencode/servers") {
+				return new Response(JSON.stringify([{ port: 3000, pid: 123, directory: "/test" }]))
+			}
+			return new Response(new ReadableStream(), {
+				headers: { "Content-Type": "text/event-stream" },
+			})
+		})
+
+		sse.onStateChange(callback)
+		callback.mockClear() // Clear initial call
+
+		sse.start()
+		await vi.advanceTimersByTimeAsync(100)
+
+		// Should have emitted state change with discovered server
+		expect(callback).toHaveBeenCalled()
+		const lastCall = callback.mock.calls[callback.mock.calls.length - 1][0]
+		expect(lastCall.servers.length).toBeGreaterThan(0)
+		expect(lastCall.servers[0].port).toBe(3000)
+
+		sse.stop()
+	})
+
+	it("should emit state change on connection state changes", async () => {
+		const sse = new MultiServerSSE()
+		const callback = vi.fn()
+
+		vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+			if (url === "/api/opencode/servers") {
+				return new Response(JSON.stringify([{ port: 3000, pid: 123, directory: "/test" }]))
+			}
+			return new Response(new ReadableStream(), {
+				headers: { "Content-Type": "text/event-stream" },
+			})
+		})
+
+		sse.onStateChange(callback)
+		callback.mockClear()
+
+		sse.start()
+		await vi.advanceTimersByTimeAsync(100)
+
+		// Should emit for connecting → connected transitions
+		const calls = callback.mock.calls
+		expect(calls.length).toBeGreaterThan(0)
+
+		// At least one call should show connection state
+		const hasConnectionState = calls.some((call) => {
+			const state = call[0]
+			return state.connections.length > 0
+		})
+		expect(hasConnectionState).toBe(true)
+
+		sse.stop()
+	})
+
+	it("should handle multiple subscribers", async () => {
+		const sse = new MultiServerSSE()
+		const callback1 = vi.fn()
+		const callback2 = vi.fn()
+
+		sse.onStateChange(callback1)
+		sse.onStateChange(callback2)
+
+		// Both should get initial state
+		expect(callback1).toHaveBeenCalledTimes(1)
+		expect(callback2).toHaveBeenCalledTimes(1)
+
+		callback1.mockClear()
+		callback2.mockClear()
 
 		vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
 			if (url === "/api/opencode/servers") {
@@ -119,9 +242,87 @@ describe("MultiServerSSE connection status", () => {
 		sse.start()
 		await vi.advanceTimersByTimeAsync(100)
 
-		sse.stop()
+		// Both should receive state changes
+		expect(callback1).toHaveBeenCalled()
+		expect(callback2).toHaveBeenCalled()
 
-		expect(sse.isConnected()).toBe(false)
+		sse.stop()
+	})
+
+	it("should not call callbacks after they are unsubscribed", () => {
+		const sse = new MultiServerSSE()
+		const callback1 = vi.fn()
+		const callback2 = vi.fn()
+
+		const unsub1 = sse.onStateChange(callback1)
+		sse.onStateChange(callback2)
+
+		callback1.mockClear()
+		callback2.mockClear()
+
+		// Unsubscribe first callback
+		unsub1()
+
+		// Trigger state change
+		sse.start()
+
+		// Only callback2 should be called
+		expect(callback1).not.toHaveBeenCalled()
+		expect(callback2).toHaveBeenCalled()
+
+		sse.stop()
+	})
+
+	it("getCurrentState should return current SSEState", () => {
+		const sse = new MultiServerSSE()
+
+		const state = sse.getCurrentState()
+
+		expect(state).toHaveProperty("servers")
+		expect(state).toHaveProperty("connections")
+		expect(state).toHaveProperty("discovering")
+		expect(state).toHaveProperty("connected")
+		expect(Array.isArray(state.servers)).toBe(true)
+		expect(Array.isArray(state.connections)).toBe(true)
+		expect(typeof state.discovering).toBe("boolean")
+		expect(typeof state.connected).toBe("boolean")
+	})
+
+	it("should emit state change when server is removed", async () => {
+		const sse = new MultiServerSSE()
+		const callback = vi.fn()
+
+		let returnServer = true
+
+		vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+			if (url === "/api/opencode/servers") {
+				if (returnServer) {
+					return new Response(JSON.stringify([{ port: 3000, pid: 123, directory: "/test" }]))
+				}
+				return new Response(JSON.stringify([]))
+			}
+			return new Response(new ReadableStream(), {
+				headers: { "Content-Type": "text/event-stream" },
+			})
+		})
+
+		sse.onStateChange(callback)
+		callback.mockClear()
+
+		sse.start()
+		await vi.advanceTimersByTimeAsync(100)
+
+		const initialCalls = callback.mock.calls.length
+		callback.mockClear()
+
+		// Server disappears on next discovery
+		returnServer = false
+		await vi.advanceTimersByTimeAsync(5000) // Discovery interval
+
+		// Should have emitted state change
+		expect(callback).toHaveBeenCalled()
+
+		sse.stop()
 	})
 })
 

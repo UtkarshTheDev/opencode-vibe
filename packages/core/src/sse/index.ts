@@ -15,4 +15,6 @@ export {
 	calculateBackoff,
 	// Types
 	type ConnectionState,
+	type DiscoveredServer,
+	type SSEState,
 } from "./multi-server-sse.js"

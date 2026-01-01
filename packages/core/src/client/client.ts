@@ -17,6 +17,21 @@ export type { OpencodeClient }
 export const OPENCODE_URL = process.env.NEXT_PUBLIC_OPENCODE_URL ?? "http://localhost:4056"
 
 /**
+ * Default proxy URL for browser clients
+ * Extracts port from OPENCODE_URL and formats as Next.js API route
+ */
+const DEFAULT_PROXY_URL = (() => {
+	try {
+		const url = new URL(OPENCODE_URL)
+		const port = url.port || "4056"
+		return `/api/opencode/${port}`
+	} catch {
+		// Fallback if OPENCODE_URL is malformed
+		return "/api/opencode/4056"
+	}
+})()
+
+/**
  * Routing context for smart server discovery
  * Inject this from MultiServerSSE or other discovery mechanisms
  */
@@ -39,17 +54,17 @@ export interface RoutingContext {
  *
  * @example
  * ```ts
- * // Basic usage (routes to default)
+ * // Basic usage (routes to proxy URL)
  * const url = getClientUrl()
- * // => "http://localhost:4056"
+ * // => "/api/opencode/4056"
  *
  * // With directory (routes to directory's server if found)
  * const url = getClientUrl("/path/to/project", undefined, { servers })
- * // => "http://127.0.0.1:4057" (if server found) or default
+ * // => "/api/opencode/4057" (if server found) or "/api/opencode/4056"
  *
  * // With session (routes to session's server)
  * const url = getClientUrl("/path/to/project", "ses_123", { servers, sessionToPort })
- * // => routes to cached session server, then directory, then default
+ * // => routes to cached session server, then directory, then proxy URL
  * ```
  */
 export function getClientUrl(
@@ -57,9 +72,9 @@ export function getClientUrl(
 	sessionId?: string,
 	routingContext?: RoutingContext,
 ): string {
-	// No routing context = use default
+	// No routing context = use proxy URL (browser-safe)
 	if (!routingContext || routingContext.servers.length === 0) {
-		return OPENCODE_URL
+		return DEFAULT_PROXY_URL
 	}
 
 	// Priority: session-specific routing > directory routing > default
@@ -76,7 +91,7 @@ export function getClientUrl(
 		return getServerForDirectory(directory, routingContext.servers)
 	}
 
-	return OPENCODE_URL
+	return DEFAULT_PROXY_URL
 }
 
 /**
@@ -107,7 +122,7 @@ export function createClient(directory?: string, sessionId?: string): OpencodeCl
 		discoveredUrl = multiServerSSE.getBaseUrlForDirectory(directory)
 	}
 
-	const serverUrl = discoveredUrl ?? OPENCODE_URL
+	const serverUrl = discoveredUrl ?? DEFAULT_PROXY_URL
 
 	return createOpencodeClient({
 		baseUrl: serverUrl,

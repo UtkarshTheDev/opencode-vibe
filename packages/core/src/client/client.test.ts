@@ -6,20 +6,20 @@ import { describe, expect, it } from "vitest"
 import { getClientUrl, OPENCODE_URL, type RoutingContext } from "./client.js"
 
 describe("getClientUrl", () => {
-	it("returns default URL when no args", () => {
+	it("returns proxy URL when no args", () => {
 		const url = getClientUrl()
-		expect(url).toBe(OPENCODE_URL)
+		expect(url).toBe("/api/opencode/4056")
 	})
 
-	it("returns default URL when no routing context", () => {
+	it("returns proxy URL when no routing context", () => {
 		const url = getClientUrl("/path/to/project")
-		expect(url).toBe(OPENCODE_URL)
+		expect(url).toBe("/api/opencode/4056")
 	})
 
-	it("returns default URL when routing context has no servers", () => {
+	it("returns proxy URL when routing context has no servers", () => {
 		const context: RoutingContext = { servers: [] }
 		const url = getClientUrl("/path/to/project", undefined, context)
-		expect(url).toBe(OPENCODE_URL)
+		expect(url).toBe("/api/opencode/4056")
 	})
 
 	it("routes to directory server when available", () => {
@@ -66,9 +66,9 @@ describe("regression prevention (from semantic memory)", () => {
 		const url = getClientUrl()
 		expect(url).toBeTruthy()
 		expect(url).not.toBe("")
-		expect(url).toBe("http://localhost:4056")
+		expect(url).toBe("/api/opencode/4056") // Now returns proxy URL
 
-		// The URL constant should NEVER be empty
+		// The OPENCODE_URL constant should NEVER be empty (used for SSR)
 		expect(OPENCODE_URL).toBeTruthy()
 		expect(OPENCODE_URL).not.toBe("")
 		expect(OPENCODE_URL).toBe("http://localhost:4056")

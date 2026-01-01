@@ -8,15 +8,12 @@
 
 import { exec } from "child_process"
 import { promisify } from "util"
+import type { DiscoveredServer } from "../types/events.js"
 
 const execAsync = promisify(exec)
 
-export interface DiscoveredServer {
-	port: number
-	pid: number
-	directory: string
-	sessions?: string[] // Session IDs hosted by this server
-}
+// Re-export canonical type
+export type { DiscoveredServer }
 
 interface CandidatePort {
 	port: number

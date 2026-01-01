@@ -28,6 +28,7 @@
  */
 
 import { EventSourceParserStream } from "eventsource-parser/stream"
+import type { ConnectionState, DiscoveredServer, SSEState } from "../types/events.js"
 
 /**
  * Backoff configuration for reconnection attempts
@@ -42,10 +43,8 @@ const JITTER_FACTOR = 0.2 // Add up to 20% jitter
 export const HEALTH_TIMEOUT_MS = 60000 // 60 seconds without events triggers reconnect
 const HEALTH_CHECK_INTERVAL_MS = 10000 // Check health every 10 seconds
 
-/**
- * Connection states for observability
- */
-export type ConnectionState = "connected" | "connecting" | "disconnected"
+// Re-export canonical types
+export type { ConnectionState, DiscoveredServer, SSEState }
 
 /**
  * Calculate exponential backoff with jitter
@@ -55,13 +54,6 @@ export function calculateBackoff(attempt: number): number {
 	const baseDelay = Math.min(BASE_BACKOFF_MS * Math.pow(2, attempt), MAX_BACKOFF_MS)
 	const jitter = baseDelay * Math.random() * JITTER_FACTOR
 	return baseDelay + jitter
-}
-
-interface DiscoveredServer {
-	port: number
-	pid: number
-	directory: string
-	sessions?: string[] // Session IDs hosted by this server
 }
 
 interface StatusUpdate {
@@ -86,6 +78,7 @@ export class MultiServerSSE {
 	private connections = new Map<number, AbortController>()
 	private statusCallbacks: StatusCallback[] = []
 	private eventCallbacks: EventCallback[] = []
+	private stateChangeCallbacks: ((state: SSEState) => void)[] = []
 	private discoveryInterval?: ReturnType<typeof setInterval>
 	private healthCheckInterval?: ReturnType<typeof setInterval>
 	private started = false
@@ -225,6 +218,89 @@ export class MultiServerSSE {
 	}
 
 	/**
+	 * Get current SSE state snapshot
+	 * Used for immediate state access and initial hook state
+	 */
+	getCurrentState(): SSEState {
+		// Convert getDiscoveredServers() output to match DiscoveredServer type
+		const servers = this.getDiscoveredServers().map((server) => {
+			// Build port -> directory map for session lookup
+			const sessions: string[] = []
+			for (const [sessionId, port] of this.sessionToPort) {
+				if (port === server.port) {
+					sessions.push(sessionId)
+				}
+			}
+
+			return {
+				port: server.port,
+				pid: 0, // We don't track PID in runtime state (only from discovery)
+				directory: server.directory,
+				sessions: sessions.length > 0 ? sessions : undefined,
+			}
+		})
+
+		// Convert connection states to tuples with extended metadata
+		const connections: [number, { state: ConnectionState; lastEventTime?: number }][] = []
+		for (const [port, state] of this.connectionStates) {
+			connections.push([
+				port,
+				{
+					state,
+					lastEventTime: this.lastEventTimes.get(port),
+				},
+			])
+		}
+
+		return {
+			servers,
+			connections,
+			discovering: this.started && !this.isDiscoveryComplete(),
+			connected: this.isConnected(),
+		}
+	}
+
+	/**
+	 * Subscribe to SSE state changes (observable pattern)
+	 * Callback is called immediately with current state, then on every state change.
+	 *
+	 * @returns Unsubscribe function
+	 */
+	onStateChange(callback: (state: SSEState) => void): () => void {
+		this.stateChangeCallbacks.push(callback)
+
+		// Emit current state immediately
+		try {
+			callback(this.getCurrentState())
+		} catch (e) {
+			console.error("[MultiServerSSE] State change callback error:", e)
+		}
+
+		// Return unsubscribe function
+		return () => {
+			const index = this.stateChangeCallbacks.indexOf(callback)
+			if (index > -1) {
+				this.stateChangeCallbacks.splice(index, 1)
+			}
+		}
+	}
+
+	/**
+	 * Emit state change to all subscribers
+	 * Called when: discovery completes, server added/removed, connection state changes
+	 */
+	private emitStateChange() {
+		const state = this.getCurrentState()
+		for (const cb of this.stateChangeCallbacks) {
+			try {
+				cb(state)
+			} catch (e) {
+				console.error("[MultiServerSSE] State change callback error:", e)
+			}
+		}
+	}
+
+	/**
 	 * Start discovering servers and subscribing to their events
 	 */
 	start() {
@@ -232,6 +308,9 @@ export class MultiServerSSE {
 		this.started = true
 
 		console.debug("[MultiServerSSE] Starting server discovery and SSE connections")
+
+		// Emit state change (discovering: false → true)
+		this.emitStateChange()
 
 		// Discover immediately on start
 		this.discover()
@@ -321,12 +400,14 @@ export class MultiServerSSE {
 
 	/**
 	 * Update connection state and log the change
+	 * Emits state change to subscribers when state changes
 	 */
 	private setConnectionState(port: number, state: ConnectionState) {
 		const previousState = this.connectionStates.get(port)
 		if (previousState !== state) {
 			this.connectionStates.set(port, state)
 			console.debug(`[MultiServerSSE] Port ${port}: ${previousState ?? "none"} → ${state}`)
+			this.emitStateChange()
 		}
 	}
 
@@ -416,10 +497,12 @@ export class MultiServerSSE {
 			}
 
 			// Remove connections to dead servers
+			let serversChanged = false
 			for (const [port, controller] of this.connections) {
 				if (!activePorts.has(port)) {
 					controller.abort()
 					this.connections.delete(port)
+					serversChanged = true
 				}
 			}
 
@@ -427,7 +510,13 @@ export class MultiServerSSE {
 			for (const server of servers) {
 				if (!this.connections.has(server.port)) {
 					this.connectToServer(server.port)
+					serversChanged = true
 				}
+			}
+
+			// Emit state change if servers were added or removed
+			if (serversChanged) {
+				this.emitStateChange()
 			}
 		} catch {
 			// Discovery failed silently - will retry on next interval
@@ -545,6 +634,16 @@ export class MultiServerSSE {
 
 		if (sessionID) {
 			this.sessionToPort.set(sessionID, port)
+		}
+
+		// Debug logging for session.status events
+		if (payload.type === "session.status") {
+			console.debug("[MultiServerSSE] session.status event:", {
+				port,
+				directory,
+				sessionID: props.sessionID,
+				status: props.status,
+			})
 		}
 
 		// Emit ALL events to subscribers (messages, parts, status, etc.)
