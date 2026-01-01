@@ -321,4 +321,465 @@ describe("useOpencodeStore", () => {
 			expect(dir).toBeDefined()
 		})
 	})
+
+	describe("multi-directory session status", () => {
+		it("should update session status in directory B even when directory A was initialized first", () => {
+			const store = useOpencodeStore.getState()
+
+			// Initialize directory A first
+			store.initDirectory("/project/A")
+
+			// Session status event for directory B (not yet initialized)
+			store.handleSSEEvent({
+				directory: "/project/B",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "session-b-1",
+						status: { running: true },
+					},
+				},
+			})
+
+			// Verify directory B was auto-created and status was set
+			const dirB = useOpencodeStore.getState().directories["/project/B"]
+			expect(dirB).toBeDefined()
+			expect(dirB?.sessionStatus["session-b-1"]).toBe("running")
+			expect(dirB?.sessionLastActivity["session-b-1"]).toBeDefined()
+
+			// Verify directory A is unaffected
+			const dirA = useOpencodeStore.getState().directories["/project/A"]
+			expect(dirA?.sessionStatus["session-b-1"]).toBeUndefined()
+		})
+
+		it("should handle session status updates for multiple directories simultaneously", () => {
+			const store = useOpencodeStore.getState()
+
+			// Initialize both directories
+			store.initDirectory("/project/A")
+			store.initDirectory("/project/B")
+
+			// Update session status for directory A
+			store.handleSSEEvent({
+				directory: "/project/A",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "session-a-1",
+						status: { running: true },
+					},
+				},
+			})
+
+			// Update session status for directory B
+			store.handleSSEEvent({
+				directory: "/project/B",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "session-b-1",
+						status: { running: true },
+					},
+				},
+			})
+
+			// Verify both directories have their own status
+			const state = useOpencodeStore.getState()
+			expect(state.directories["/project/A"]?.sessionStatus["session-a-1"]).toBe("running")
+			expect(state.directories["/project/B"]?.sessionStatus["session-b-1"]).toBe("running")
+
+			// Verify status is isolated (directory A doesn't have B's session)
+			expect(state.directories["/project/A"]?.sessionStatus["session-b-1"]).toBeUndefined()
+			expect(state.directories["/project/B"]?.sessionStatus["session-a-1"]).toBeUndefined()
+		})
+
+		it("should handle session.status event with different payload formats", () => {
+			const store = useOpencodeStore.getState()
+			store.initDirectory("/project/A")
+
+			// Format 1: { running: boolean } from SSE
+			store.handleSSEEvent({
+				directory: "/project/A",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "session-1",
+						status: { running: true },
+					},
+				},
+			})
+
+			let status = useOpencodeStore.getState().directories["/project/A"]?.sessionStatus["session-1"]
+			expect(status).toBe("running")
+
+			// Format 2: { type: "busy" | "retry" | "idle" } from /session/status endpoint
+			store.handleSSEEvent({
+				directory: "/project/A",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "session-2",
+						status: { type: "busy" },
+					},
+				},
+			})
+
+			status = useOpencodeStore.getState().directories["/project/A"]?.sessionStatus["session-2"]
+			expect(status).toBe("running")
+
+			// Format 3: { type: "idle" } should be "completed"
+			store.handleSSEEvent({
+				directory: "/project/A",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "session-3",
+						status: { type: "idle" },
+					},
+				},
+			})
+
+			status = useOpencodeStore.getState().directories["/project/A"]?.sessionStatus["session-3"]
+			expect(status).toBe("completed")
+
+			// Format 4: string format (for tests or future API changes)
+			store.handleSSEEvent({
+				directory: "/project/A",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "session-4",
+						status: "error",
+					},
+				},
+			})
+
+			status = useOpencodeStore.getState().directories["/project/A"]?.sessionStatus["session-4"]
+			expect(status).toBe("error")
+		})
+
+		it("should update sessionLastActivity timestamp on status change", () => {
+			const store = useOpencodeStore.getState()
+			store.initDirectory("/project/A")
+
+			const beforeTime = Date.now()
+
+			store.handleSSEEvent({
+				directory: "/project/A",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "session-1",
+						status: { running: true },
+					},
+				},
+			})
+
+			const afterTime = Date.now()
+			const activity =
+				useOpencodeStore.getState().directories["/project/A"]?.sessionLastActivity["session-1"]
+
+			expect(activity).toBeDefined()
+			expect(activity).toBeGreaterThanOrEqual(beforeTime)
+			expect(activity).toBeLessThanOrEqual(afterTime)
+		})
+
+		it("should handle session.created events in correct directory state", () => {
+			const store = useOpencodeStore.getState()
+
+			// Create sessions in different directories
+			const sessionA = {
+				id: "session-a",
+				title: "Session A",
+				directory: "/project/A",
+				time: { created: Date.now(), updated: Date.now() },
+			}
+
+			const sessionB = {
+				id: "session-b",
+				title: "Session B",
+				directory: "/project/B",
+				time: { created: Date.now(), updated: Date.now() },
+			}
+
+			store.handleSSEEvent({
+				directory: "/project/A",
+				payload: {
+					type: "session.created",
+					properties: { info: sessionA },
+				},
+			})
+
+			store.handleSSEEvent({
+				directory: "/project/B",
+				payload: {
+					type: "session.created",
+					properties: { info: sessionB },
+				},
+			})
+
+			// Verify sessions are in correct directories
+			const dirA = useOpencodeStore.getState().directories["/project/A"]
+			const dirB = useOpencodeStore.getState().directories["/project/B"]
+
+			expect(dirA?.sessions).toHaveLength(1)
+			expect(dirA?.sessions[0]?.id).toBe("session-a")
+
+			expect(dirB?.sessions).toHaveLength(1)
+			expect(dirB?.sessions[0]?.id).toBe("session-b")
+
+			// Verify isolation - session-a is not in directory B
+			const sessionInB = store.getSession("/project/B", "session-a")
+			expect(sessionInB).toBeUndefined()
+
+			// Verify isolation - session-b is not in directory A
+			const sessionInA = store.getSession("/project/A", "session-b")
+			expect(sessionInA).toBeUndefined()
+		})
+
+		it("should handle multiple status updates for same session across time", () => {
+			const store = useOpencodeStore.getState()
+			store.initDirectory("/project/A")
+
+			// Session starts running
+			store.handleSSEEvent({
+				directory: "/project/A",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "session-1",
+						status: { running: true },
+					},
+				},
+			})
+
+			const firstActivity =
+				useOpencodeStore.getState().directories["/project/A"]?.sessionLastActivity["session-1"]
+			expect(
+				useOpencodeStore.getState().directories["/project/A"]?.sessionStatus["session-1"],
+			).toBe("running")
+
+			// Small delay to ensure timestamp difference
+			const delay = () => new Promise((resolve) => setTimeout(resolve, 10))
+			return delay().then(() => {
+				// Session completes
+				store.handleSSEEvent({
+					directory: "/project/A",
+					payload: {
+						type: "session.status",
+						properties: {
+							sessionID: "session-1",
+							status: { running: false },
+						},
+					},
+				})
+
+				const secondActivity =
+					useOpencodeStore.getState().directories["/project/A"]?.sessionLastActivity["session-1"]
+				expect(
+					useOpencodeStore.getState().directories["/project/A"]?.sessionStatus["session-1"],
+				).toBe("completed")
+				expect(secondActivity).toBeGreaterThan(firstActivity!)
+			})
+		})
+
+		it("should maintain independent session arrays for multiple directories", () => {
+			const store = useOpencodeStore.getState()
+
+			// Create multiple sessions in directory A
+			store.handleSSEEvent({
+				directory: "/project/A",
+				payload: {
+					type: "session.created",
+					properties: {
+						info: {
+							id: "session-a-1",
+							title: "A1",
+							directory: "/project/A",
+							time: { created: Date.now(), updated: Date.now() },
+						},
+					},
+				},
+			})
+
+			store.handleSSEEvent({
+				directory: "/project/A",
+				payload: {
+					type: "session.created",
+					properties: {
+						info: {
+							id: "session-a-2",
+							title: "A2",
+							directory: "/project/A",
+							time: { created: Date.now(), updated: Date.now() },
+						},
+					},
+				},
+			})
+
+			// Create session in directory B
+			store.handleSSEEvent({
+				directory: "/project/B",
+				payload: {
+					type: "session.created",
+					properties: {
+						info: {
+							id: "session-b-1",
+							title: "B1",
+							directory: "/project/B",
+							time: { created: Date.now(), updated: Date.now() },
+						},
+					},
+				},
+			})
+
+			// Verify directory A has 2 sessions
+			const sessionsA = store.getSessions("/project/A")
+			expect(sessionsA).toHaveLength(2)
+			expect(sessionsA.map((s) => s.id)).toEqual(["session-a-1", "session-a-2"])
+
+			// Verify directory B has 1 session
+			const sessionsB = store.getSessions("/project/B")
+			expect(sessionsB).toHaveLength(1)
+			expect(sessionsB[0]?.id).toBe("session-b-1")
+		})
+	})
+
+	describe("model limits - store as single source of truth", () => {
+		beforeEach(() => {
+			useOpencodeStore.getState().initDirectory("/test/project")
+		})
+
+		it("should use cached model limits from store, not message.model.limits", () => {
+			const store = useOpencodeStore.getState()
+
+			// Populate store with model limits FIRST (bootstrap phase)
+			store.setModelLimits("/test/project", {
+				"claude-opus-4": { context: 200000, output: 8192 },
+			})
+
+			// Message arrives with tokens but WITHOUT model.limits (backend sends modelID)
+			// This tests that we ONLY use store, not message.model.limits fallback
+			store.handleEvent("/test/project", {
+				type: "message.updated",
+				properties: {
+					info: {
+						id: "msg-1",
+						sessionID: "session-1",
+						role: "assistant",
+						modelID: "claude-opus-4",
+						tokens: {
+							input: 50000,
+							output: 2000,
+							cache: { read: 10000 },
+						},
+					},
+				},
+			})
+
+			const contextUsage =
+				useOpencodeStore.getState().directories["/test/project"]?.contextUsage["session-1"]
+			expect(contextUsage).toBeDefined()
+			// usableContext = 200000 - min(8192, 32000) = 200000 - 8192 = 191808
+			// used = 50000 + 10000 + 2000 = 62000
+			// percentage = (62000 / 191808) * 100 = ~32%
+			expect(contextUsage?.limit).toBe(200000)
+			expect(contextUsage?.used).toBe(62000)
+			expect(contextUsage?.percentage).toBe(32) // Math.round((62000 / 191808) * 100)
+		})
+
+		it("should fallback to DEFAULT_MODEL_LIMITS when model not in store", () => {
+			const store = useOpencodeStore.getState()
+
+			// Message with unknown modelID (not in store)
+			store.handleEvent("/test/project", {
+				type: "message.updated",
+				properties: {
+					info: {
+						id: "msg-1",
+						sessionID: "session-1",
+						role: "assistant",
+						modelID: "unknown-model",
+						tokens: {
+							input: 50000,
+							output: 2000,
+							cache: { read: 10000 },
+						},
+					},
+				},
+			})
+
+			const contextUsage =
+				useOpencodeStore.getState().directories["/test/project"]?.contextUsage["session-1"]
+			expect(contextUsage).toBeDefined()
+			// Should use DEFAULT_MODEL_LIMITS: { context: 128000, output: 4096 }
+			// usableContext = 128000 - min(4096, 32000) = 128000 - 4096 = 123904
+			// used = 62000
+			// percentage = (62000 / 123904) * 100 = ~50%
+			expect(contextUsage?.limit).toBe(128000)
+			expect(contextUsage?.used).toBe(62000)
+			expect(contextUsage?.percentage).toBe(50) // Math.round((62000 / 123904) * 100)
+		})
+
+		it("should NOT cache message.model.limits in store", () => {
+			const store = useOpencodeStore.getState()
+
+			// Message with model.limits (old behavior - should be ignored)
+			store.handleEvent("/test/project", {
+				type: "message.updated",
+				properties: {
+					info: {
+						id: "msg-1",
+						sessionID: "session-1",
+						role: "assistant",
+						modelID: "claude-opus-4",
+						model: {
+							name: "claude-opus-4",
+							limits: { context: 999999, output: 999999 }, // These should be IGNORED
+						},
+						tokens: {
+							input: 50000,
+							output: 2000,
+						},
+					},
+				},
+			})
+
+			// Store should NOT have cached these limits
+			const cachedLimits =
+				useOpencodeStore.getState().directories["/test/project"]?.modelLimits["claude-opus-4"]
+			expect(cachedLimits).toBeUndefined()
+
+			// Context usage should use DEFAULT_MODEL_LIMITS (128000, 4096) since model not in store
+			const contextUsage =
+				useOpencodeStore.getState().directories["/test/project"]?.contextUsage["session-1"]
+			expect(contextUsage?.limit).toBe(128000) // DEFAULT, not 999999
+		})
+
+		it("should handle message without modelID gracefully", () => {
+			const store = useOpencodeStore.getState()
+
+			// Message without modelID (edge case)
+			store.handleEvent("/test/project", {
+				type: "message.updated",
+				properties: {
+					info: {
+						id: "msg-1",
+						sessionID: "session-1",
+						role: "assistant",
+						tokens: {
+							input: 50000,
+							output: 2000,
+						},
+					},
+				},
+			})
+
+			const contextUsage =
+				useOpencodeStore.getState().directories["/test/project"]?.contextUsage["session-1"]
+			// Should still calculate context usage with DEFAULT_MODEL_LIMITS
+			expect(contextUsage).toBeDefined()
+			expect(contextUsage?.limit).toBe(128000)
+		})
+	})
 })

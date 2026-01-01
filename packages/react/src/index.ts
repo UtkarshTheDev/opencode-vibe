@@ -63,6 +63,13 @@ export {
 } from "./hooks/use-file-search"
 export { useLiveTime } from "./hooks/internal/use-live-time"
 export { useCommands } from "./hooks/use-commands"
+export {
+	useMultiDirectorySessions,
+	useMultiDirectoryStatus,
+	useSSEState,
+	type SessionDisplay,
+	type UseMultiDirectoryStatusReturn,
+} from "./hooks"
 
 // Re-export core types for backwards compatibility
 export type { Session, Message, Part } from "@opencode-vibe/core/types"

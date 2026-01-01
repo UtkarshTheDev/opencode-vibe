@@ -5,6 +5,8 @@
  * Each directory has isolated state with sessions, messages, parts, todos, etc.
  */
 
+import type { SessionStatus, GlobalEvent } from "@opencode-vibe/core/types"
+
 /**
  * Session type matching OpenCode API
  */
@@ -70,11 +72,6 @@ export type Part = {
 }
 
 /**
- * Session status literal type
- */
-export type SessionStatus = "pending" | "running" | "completed" | "error"
-
-/**
  * Todo type for session tasks
  */
 export type Todo = {
@@ -137,13 +134,5 @@ export interface DirectoryState {
 	modelLimits: Record<string, { context: number; output: number }>
 }
 
-/**
- * GlobalEvent from SSE stream (matches OpenCode API)
- */
-export type GlobalEvent = {
-	directory: string
-	payload: {
-		type: string
-		properties: any
-	}
-}
+// Re-export canonical types from core (used in DirectoryState above)
+export type { SessionStatus, GlobalEvent }

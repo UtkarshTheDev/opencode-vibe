@@ -28,6 +28,7 @@ import type { GlobalEvent } from "../store/types"
 import { createClient } from "@opencode-vibe/core/client"
 import { createRouter, createCaller, createRoutes, type Caller } from "@opencode-vibe/core/router"
 import { useMultiServerSSE } from "../hooks/internal/use-multi-server-sse"
+import { fetchModelLimitsWithRetry, DEFAULT_MODEL_LIMITS } from "../lib/bootstrap"
 
 /**
  * Context value provided by OpenCodeProvider
@@ -148,19 +149,21 @@ export function OpencodeProvider({ url, directory, children }: OpencodeProviderP
 		}
 
 		// Load providers to cache model limits (for context usage calculation)
-		try {
+		// Uses retry with exponential backoff for resilience
+		const modelLimits = await fetchModelLimitsWithRetry(async () => {
 			const client = await getClient()
 			const providerResponse = await client.provider.list()
-			if (providerResponse.data?.all) {
-				const modelLimits: Record<string, { context: number; output: number }> = {}
 
+			const limits: Record<string, { context: number; output: number }> = {}
+
+			if (providerResponse.data?.all) {
 				for (const provider of providerResponse.data.all) {
 					if (provider.models) {
 						for (const [modelID, model] of Object.entries(provider.models)) {
 							// Backend sends 'limit' not 'limits'
 							const limit = (model as any).limit
 							if (limit?.context && limit?.output) {
-								modelLimits[modelID] = {
+								limits[modelID] = {
 									context: limit.context,
 									output: limit.output,
 								}
@@ -168,17 +171,18 @@ export function OpencodeProvider({ url, directory, children }: OpencodeProviderP
 						}
 					}
 				}
-
-				// Cache model limits in store
-				if (Object.keys(modelLimits).length > 0) {
-					store.setModelLimits(directory, modelLimits)
-				}
 			}
-		} catch (error) {
-			// Provider fetch failed - not critical, context usage will be unavailable
+
+			return limits
+		})
+
+		// Cache model limits in store
+		if (Object.keys(modelLimits).length > 0) {
+			store.setModelLimits(directory, modelLimits)
+		} else {
+			// Warn if limits unavailable after all retries
 			console.warn(
-				"[OpenCode] Failed to load providers:",
-				error instanceof Error ? error.message : error,
+				"[OpenCode] Model limits unavailable after retries. Context usage will show 0% until limits are loaded.",
 			)
 		}
 	}, [directory, getClient])
@@ -268,10 +272,11 @@ export function OpencodeProvider({ url, directory, children }: OpencodeProviderP
 				return
 			}
 
-			// Only process events for our directory
-			if (eventDirectory === directory) {
-				store.handleEvent(directory, payload)
-			}
+			// Process events for ALL directories - the store auto-initializes
+			// directory state via handleEvent's ensureDirectory logic.
+			// This enables cross-directory updates (e.g., project list showing
+			// status updates for multiple OpenCode instances on different ports).
+			store.handleEvent(eventDirectory, payload)
 		},
 		[directory],
 	)

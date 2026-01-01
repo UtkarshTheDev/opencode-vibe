@@ -24,6 +24,8 @@ describe("generateOpencodeHelpers", () => {
 	beforeEach(() => {
 		// Reset window.__OPENCODE between tests
 		mockWindow.__OPENCODE = undefined
+		// Reset store state to prevent leakage between tests
+		useOpencodeStore.setState({ directories: {} })
 	})
 
 	describe("getOpencodeConfig", () => {
@@ -261,10 +263,79 @@ describe("generateOpencodeHelpers", () => {
 				expect(hookNames).toContain("useFileSearch")
 			})
 
-			it("generates exactly 19 hooks", () => {
+			it("generates exactly 23 hooks", () => {
 				const hookCount = Object.keys(helpers).length
-				expect(hookCount).toBe(19)
+				expect(hookCount).toBe(23)
 			})
+		})
+	})
+
+	describe("useSSEEvents cross-directory behavior", () => {
+		it("store can handle SSE events for all directories (verifies capability exists)", () => {
+			// This test verifies that the STORE can handle cross-directory events.
+			// The bug was in useSSEEvents (line ~935) filtering out cross-directory events
+			// BEFORE they reach the store.
+			//
+			// This test proves the store's handleSSEEvent auto-initializes directories
+			// and processes events correctly. The fix is to remove the filter in
+			// useSSEEvents so events reach the store.
+			//
+			// Testing the actual hook behavior requires React rendering, which we avoid
+			// per TDD doctrine (no DOM testing). This test validates the underlying
+			// capability - the store CAN handle cross-directory events.
+
+			// Setup: Configure for directory A
+			mockWindow.__OPENCODE = {
+				baseUrl: "/api/opencode/4056",
+				directory: "/project-a",
+			}
+
+			// Simulate SSE event for directory B (different from configured directory)
+			const directoryBEvent = {
+				directory: "/project-b",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "test-session-123",
+						status: { running: true },
+					},
+				},
+			}
+
+			// Before fix: this would be filtered out at line 935
+			// After fix: store should handle it via auto-init
+			useOpencodeStore.getState().handleSSEEvent(directoryBEvent)
+
+			// Verify store created directory B state and processed the event
+			const state = useOpencodeStore.getState()
+			expect(state.directories["/project-b"]).toBeDefined()
+			expect(state.directories["/project-b"]?.sessionStatus["test-session-123"]).toBe("running")
+		})
+
+		it("still processes events for the configured directory", () => {
+			// Sanity check: removing the filter shouldn't break same-directory events
+
+			mockWindow.__OPENCODE = {
+				baseUrl: "/api/opencode/4056",
+				directory: "/project-a",
+			}
+
+			const sameDirectoryEvent = {
+				directory: "/project-a",
+				payload: {
+					type: "session.status",
+					properties: {
+						sessionID: "test-session-456",
+						status: { running: false },
+					},
+				},
+			}
+
+			useOpencodeStore.getState().handleSSEEvent(sameDirectoryEvent)
+
+			const state = useOpencodeStore.getState()
+			expect(state.directories["/project-a"]).toBeDefined()
+			expect(state.directories["/project-a"]?.sessionStatus["test-session-456"]).toBe("completed")
 		})
 	})
 })

@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState, useRef, useMemo } from "react"
 import type { OpencodeConfig } from "./next-ssr-plugin"
 import { useOpencodeStore } from "./store"
 import type { Session, ContextUsage, CompactionState, SessionStatus } from "./store/types"
+import { deriveSessionStatus, type DeriveSessionStatusOptions } from "./store/status-utils"
 import { useCommands as useCommandsBase } from "./hooks/use-commands"
 import { useSSE as useSSEBase } from "./hooks/internal/use-sse"
 import type { UseSSEOptions, UseSSEReturn } from "./hooks/internal/use-sse"
@@ -37,6 +38,14 @@ import type { SlashCommand } from "./types/prompt"
 import { createClient } from "./lib/client-stub"
 import { convertToApiParts } from "./lib/prompt-api"
 import fuzzysort from "fuzzysort"
+import {
+	useMultiDirectorySessions as useMultiDirectorySessionsBase,
+	type SessionDisplay,
+} from "./hooks/use-multi-directory-sessions"
+import {
+	useMultiDirectoryStatus as useMultiDirectoryStatusBase,
+	type UseMultiDirectoryStatusReturn,
+} from "./hooks/use-multi-directory-status"
 
 /**
  * Global config type augmentation
@@ -458,7 +467,7 @@ export function generateOpencodeHelpers<TRouter = any>(config?: OpencodeConfig) 
 		const [error, setError] = useState<Error | null>(null)
 		const [refreshKey, setRefreshKey] = useState(0)
 
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+		// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is intentionally used to trigger refetch
 		useEffect(() => {
 			let cancelled = false
 
@@ -671,7 +680,7 @@ export function generateOpencodeHelpers<TRouter = any>(config?: OpencodeConfig) 
 	/**
 	 * Hook for SSE connection with config-aware URL
 	 *
-	 * DEPRECATED: This hook is broken. Use useSSESync() instead.
+	 * DEPRECATED: This hook is broken. Use useSSEEvents() instead.
 	 * Components should use store selectors, not raw SSE events.
 	 *
 	 * @param options - Optional override for url (uses config baseUrl by default)
@@ -683,13 +692,13 @@ export function generateOpencodeHelpers<TRouter = any>(config?: OpencodeConfig) 
 	 * const { events, connected, error } = useSSE()
 	 *
 	 * // ✅ USE - works correctly
-	 * useSSESync() // At top level
+	 * useSSEEvents() // At top level
 	 * const status = useSessionStatus(sessionId) // Subscribe to store
 	 * ```
 	 */
 	function useSSE(options?: Partial<UseSSEOptions>): UseSSEReturn {
 		console.warn(
-			"[useSSE] DEPRECATED: This hook is broken. Use useSSESync() + store selectors instead.",
+			"[useSSE] DEPRECATED: This hook is broken. Use useSSEEvents() + store selectors instead.",
 		)
 		// Only call getOpencodeConfig if we need the baseUrl
 		// This allows useSSE({ url: "..." }) to work without config
@@ -703,51 +712,43 @@ export function generateOpencodeHelpers<TRouter = any>(config?: OpencodeConfig) 
 	/**
 	 * Hook for session status (running/idle)
 	 *
-	 * Considers BOTH main AI response AND sub-agent activity:
-	 * - Main session is running: status = "running"
-	 * - OR any task part (sub-agent) is running: status = "running"
-	 * - Otherwise: status = "completed"
+	 * Unified status derivation using deriveSessionStatus utility.
+	 * Combines three sources of truth:
+	 * 1. Main session status from store (SSE session.status events)
+	 * 2. Sub-agent activity (task parts with status="running")
+	 * 3. Last message check (bootstrap edge case, opt-in)
 	 *
 	 * @param sessionId - Session ID
-	 * @returns Session status object
+	 * @param options - Status derivation options
+	 * @returns Session status ("running" | "completed")
 	 *
-	 * @example
+	 * @example Basic usage (default: includes sub-agents, excludes last message check)
 	 * ```tsx
 	 * const status = useSessionStatus(sessionId)
 	 * if (status === "running") { ... }
 	 * ```
+	 *
+	 * @example With bootstrap last message check
+	 * ```tsx
+	 * const status = useSessionStatus(sessionId, { includeLastMessage: true })
+	 * ```
+	 *
+	 * @example Without sub-agent check
+	 * ```tsx
+	 * const status = useSessionStatus(sessionId, { includeSubAgents: false })
+	 * ```
 	 */
-	function useSessionStatus(sessionId: string): SessionStatus {
+	function useSessionStatus(
+		sessionId: string,
+		options?: DeriveSessionStatusOptions,
+	): SessionStatus {
 		const cfg = getOpencodeConfig(config)
 		return useOpencodeStore(
 			useCallback(
 				(state) => {
-					const dir = state.directories[cfg.directory]
-					if (!dir) return "completed"
-
-					// Check main session status
-					const mainStatus = dir.sessionStatus[sessionId] ?? "completed"
-					if (mainStatus === "running") return "running"
-
-					// Check for running sub-agents (task parts)
-					const messages = dir.messages[sessionId]
-					if (!messages) return mainStatus
-
-					// Look for any running task parts in session messages
-					for (const message of messages) {
-						const parts = dir.parts[message.id]
-						if (!parts) continue
-
-						for (const part of parts) {
-							if (part.type === "tool" && part.tool === "task" && part.state.status === "running") {
-								return "running"
-							}
-						}
-					}
-
-					return mainStatus
+					return deriveSessionStatus(state, sessionId, cfg.directory, options)
 				},
-				[sessionId, cfg.directory],
+				[sessionId, cfg.directory, options],
 			),
 		)
 	}
@@ -873,70 +874,121 @@ export function generateOpencodeHelpers<TRouter = any>(config?: OpencodeConfig) 
 				}
 			}
 			// On client, get initial state immediately
+			const sseState = multiServerSSE.getCurrentState()
 			return {
-				connected: multiServerSSE.isConnected(),
-				serverCount: multiServerSSE.getConnectionStatus().size,
-				discovering: !multiServerSSE.isDiscoveryComplete(),
+				connected: sseState.connected,
+				serverCount: sseState.servers.length,
+				discovering: sseState.discovering,
 			}
 		})
 
 		useEffect(() => {
-			// Update state on interval (client-only)
-			const updateState = () => {
+			// Subscribe to state changes via observable pattern (no polling needed)
+			const unsubscribe = multiServerSSE.onStateChange((sseState) => {
 				setState({
-					connected: multiServerSSE.isConnected(),
-					serverCount: multiServerSSE.getConnectionStatus().size,
-					discovering: !multiServerSSE.isDiscoveryComplete(),
+					connected: sseState.connected,
+					serverCount: sseState.servers.length,
+					discovering: sseState.discovering,
 				})
-			}
+			})
 
-			// Initial update
-			updateState()
-
-			// Poll for state changes (multiServerSSE doesn't expose state change events)
-			const interval = setInterval(updateState, 1000)
-
-			return () => clearInterval(interval)
+			return unsubscribe
 		}, [])
 
 		return state
 	}
 
 	/**
-	 * Hook to start SSE and sync events to the Zustand store
+	 * Hook to start SSE and route events to the Zustand store
 	 *
-	 * This is the critical hook that wires up real-time updates.
-	 * Call this once at the top level of your session page.
+	 * **This is the critical hook that wires up real-time updates.**
+	 * Call this once at the top level (e.g., in OpencodeProvider or root layout).
 	 *
-	 * @example
+	 * **What it does**:
+	 * 1. Starts multiServerSSE singleton (idempotent - safe to call multiple times)
+	 * 2. Subscribes to ALL SSE events (not filtered by directory)
+	 * 3. Routes events to `store.handleSSEEvent()` which auto-initializes directories
+	 *
+	 * **CRITICAL**: This hook processes events for **ALL directories**, not just the current one.
+	 * This enables cross-directory features like the project list showing status updates
+	 * for multiple OpenCode instances running on different ports.
+	 *
+	 * **Data flow**:
+	 * ```
+	 * multiServerSSE.start() → discovers backend servers on ports 4056-4066
+	 *   → connects to /sse endpoints
+	 *   → onEvent callback fires for each SSE event
+	 *   → store.handleSSEEvent(event) auto-creates directory if needed
+	 *   → store.handleEvent(directory, payload) routes to specific handler
+	 *   → store updates → components re-render via selectors
+	 * ```
+	 *
+	 * **Why not filter by directory?**
+	 * The store's `handleSSEEvent` auto-creates directory state, so events for
+	 * any directory are safe to process. This allows the UI to react to changes
+	 * in other projects (e.g., showing when a background session starts running).
+	 *
+	 * @example Top-level usage
 	 * ```tsx
+	 * function OpencodeProvider({ children }) {
+	 *   useSSEEvents() // Start SSE once at top level
+	 *   return <>{children}</>
+	 * }
+	 *
 	 * function SessionPage({ sessionId }) {
-	 *   useSSESync() // Start SSE and wire to store
-	 *   const messages = useMessages(sessionId) // Now updates in real-time
+	 *   // No need to call useSSEEvents here - already running
+	 *   const messages = useMessages(sessionId) // Updates in real-time
 	 *   return <MessageList messages={messages} />
 	 * }
 	 * ```
+	 *
+	 * @example Cross-directory updates
+	 * ```tsx
+	 * function ProjectList() {
+	 *   useSSEEvents() // Processes events for all projects
+	 *   const projects = useProjects()
+	 *   return projects.map(p => {
+	 *     // Status updates work even if project is on different port
+	 *     const status = useSessionStatus(p.latestSession.id)
+	 *     return <ProjectCard status={status} />
+	 *   })
+	 * }
+	 * ```
 	 */
-	function useSSESync(): void {
+	function useSSEEvents(): void {
 		const cfg = getOpencodeConfig(config)
 
 		// Start MultiServerSSE singleton (idempotent)
 		useEffect(() => {
-			console.log("[useSSESync] Starting multiServerSSE")
+			console.log("[useSSEEvents] Starting multiServerSSE")
 			multiServerSSE.start()
 		}, [])
 
-		// Subscribe to events and route to store
+		/**
+		 * Subscribe to events and route to store
+		 *
+		 * **Key behavior**: Subscribes to ALL events from multiServerSSE, not filtered by directory.
+		 * The store's handleSSEEvent will auto-create directory state if needed, so this is safe.
+		 *
+		 * **Why getState()?** Using `useOpencodeStore.getState()` instead of the hook return value
+		 * prevents the dependency array from causing re-subscriptions on every store update.
+		 * The hook return value creates a new reference on every render (Zustand gotcha).
+		 */
 		useEffect(() => {
-			console.log("[useSSESync] Subscribing to SSE events for directory:", cfg.directory)
+			console.log("[useSSEEvents] Subscribing to SSE events (all directories)")
 
 			const unsubscribe = multiServerSSE.onEvent((event) => {
-				// Only process events for our directory
-				if (event.directory !== cfg.directory) return
+				/**
+				 * Process events for ALL directories
+				 *
+				 * The store auto-initializes directory state via handleSSEEvent's
+				 * ensureDirectory logic. This enables cross-directory updates
+				 * (e.g., project list showing status updates for multiple OpenCode
+				 * instances on different ports).
+				 */
+				console.log("[useSSEEvents] Received event for", event.directory, ":", event.payload.type)
 
-				console.log("[useSSESync] Received event:", event.payload.type)
-
-				// Route to store
+				// Route to store (getState() for stable reference)
 				useOpencodeStore.getState().handleSSEEvent({
 					directory: event.directory,
 					payload: event.payload,
@@ -944,11 +996,16 @@ export function generateOpencodeHelpers<TRouter = any>(config?: OpencodeConfig) 
 			})
 
 			return () => {
-				console.log("[useSSESync] Unsubscribing from SSE events")
+				console.log("[useSSEEvents] Unsubscribing from SSE events")
 				unsubscribe()
 			}
-		}, [cfg.directory])
+		}, [])
 	}
+
+	/**
+	 * @deprecated Use `useSSEEvents` instead. This hook subscribes to events, it doesn't "sync" anything.
+	 */
+	const useSSESync = useSSEEvents
 
 	/**
 	 * Hook for fetching provider data with connection status and defaults
@@ -1023,6 +1080,34 @@ export function generateOpencodeHelpers<TRouter = any>(config?: OpencodeConfig) 
 		}, [messages, partsMap])
 	}
 
+	/**
+	 * Hook to get sessions from multiple directories
+	 *
+	 * Direct re-export of the base hook (no config wrapper needed - already config-free)
+	 *
+	 * @param directories - Array of directory paths
+	 * @returns Record of directory -> SessionDisplay[]
+	 */
+	function useMultiDirectorySessions(directories: string[]): Record<string, SessionDisplay[]> {
+		return useMultiDirectorySessionsBase(directories)
+	}
+
+	/**
+	 * Hook to track session statuses across multiple directories
+	 *
+	 * Direct re-export of the base hook (no config wrapper needed - already config-free)
+	 *
+	 * @param directories - Array of directory paths
+	 * @param initialSessions - Optional initial session data for bootstrap
+	 * @returns Object with sessionStatuses and lastActivity
+	 */
+	function useMultiDirectoryStatus(
+		directories: string[],
+		initialSessions?: Record<string, Array<{ id: string; formattedTime: string }>>,
+	): UseMultiDirectoryStatusReturn {
+		return useMultiDirectoryStatusBase(directories, initialSessions)
+	}
+
 	return {
 		useSession,
 		useMessages,
@@ -1036,7 +1121,8 @@ export function generateOpencodeHelpers<TRouter = any>(config?: OpencodeConfig) 
 		useCreateSession,
 		useFileSearch,
 		useSSE,
-		useSSESync,
+		useSSEEvents,
+		useSSESync, // deprecated alias
 		useConnectionStatus,
 		useSessionStatus,
 		useCompactionState,
@@ -1044,8 +1130,22 @@ export function generateOpencodeHelpers<TRouter = any>(config?: OpencodeConfig) 
 		useLiveTime,
 		useSubagent,
 		useServersEffect,
+		useMultiDirectorySessions,
+		useMultiDirectoryStatus,
 	}
 }
+
+/**
+ * Re-export multi-directory hooks for direct import
+ */
+export {
+	useMultiDirectorySessions,
+	type SessionDisplay,
+} from "./hooks/use-multi-directory-sessions"
+export {
+	useMultiDirectoryStatus,
+	type UseMultiDirectoryStatusReturn,
+} from "./hooks/use-multi-directory-status"
 
 /**
  * Format token count with K/M suffix

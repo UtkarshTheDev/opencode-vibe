@@ -14,21 +14,101 @@ import { Binary } from "@opencode-vibe/core"
 import type { Session, Message, Part, SessionStatus, DirectoryState, GlobalEvent } from "./types"
 
 /**
+ * Default model limits when API unavailable or model not found.
+ * Imported from bootstrap.ts would cause circular import, so duplicated here.
+ * Used when modelID not found in store.modelLimits cache.
+ *
+ * Values match bootstrap.ts DEFAULT_MODEL_LIMITS (128k context, 4k output).
+ */
+const DEFAULT_MODEL_LIMITS = {
+	context: 128000,
+	output: 4096,
+} as const
+
+/**
  * Store state shape
+ *
+ * Contains isolated state for multiple project directories.
+ * Each directory has its own sessions, messages, parts, and metadata.
+ *
+ * @property directories - Map of directory path to DirectoryState
  */
 type OpencodeState = {
 	directories: Record<string, DirectoryState>
 }
 
 /**
- * Store actions
+ * Store actions for managing OpenCode state
+ *
+ * All actions use Immer middleware for immutable updates.
+ * Arrays are maintained in sorted order (by ID) for O(log n) binary search.
+ *
+ * @remarks
+ * Use `getState()` when calling actions inside useEffect/useCallback to avoid
+ * dependency issues (the hook return value creates new references on every render).
  */
 type OpencodeActions = {
 	// Directory management
+	/**
+	 * Initialize a directory with empty state
+	 *
+	 * Idempotent - safe to call multiple times. If directory already exists, no-op.
+	 *
+	 * @param directory - Project directory path
+	 */
 	initDirectory: (directory: string) => void
+
+	/**
+	 * Central event dispatcher for SSE events
+	 *
+	 * Routes events to appropriate handlers based on event type.
+	 * Auto-creates directory if it doesn't exist (ensures events for any
+	 * directory are processed, not dropped).
+	 *
+	 * @param directory - Project directory path
+	 * @param event - Event object with type and properties
+	 *
+	 * @remarks
+	 * This is called by `handleSSEEvent` after extracting directory from GlobalEvent.
+	 */
 	handleEvent: (directory: string, event: { type: string; properties: any }) => void
 
 	// SSE integration
+	/**
+	 * Handle SSE GlobalEvent - wrapper for handleEvent
+	 *
+	 * This is the primary integration point for SSE events.
+	 * SSEProvider/useSSEEvents calls this method when events arrive from the event stream.
+	 * It extracts directory and payload from GlobalEvent and routes to handleEvent.
+	 *
+	 * **Auto-initialization**: If the directory doesn't exist in the store,
+	 * it's automatically created with empty state. This enables cross-directory
+	 * updates (e.g., project list showing status updates for multiple OpenCode
+	 * instances on different ports).
+	 *
+	 * @param event - GlobalEvent from SSE stream (contains directory and payload)
+	 *
+	 * @example Basic usage
+	 * ```tsx
+	 * const { subscribe } = useSSE()
+	 *
+	 * useEffect(() => {
+	 *   const unsubscribe = subscribe("session.created", (globalEvent) => {
+	 *     store.handleSSEEvent(globalEvent)
+	 *   })
+	 *   return unsubscribe
+	 * }, [subscribe])
+	 * ```
+	 *
+	 * @example Multi-directory updates
+	 * ```tsx
+	 * // Events for ALL directories are processed, not filtered
+	 * // This enables the project list to show status for all active projects
+	 * multiServerSSE.onEvent((event) => {
+	 *   useOpencodeStore.getState().handleSSEEvent(event)
+	 * })
+	 * ```
+	 */
 	handleSSEEvent: (event: GlobalEvent) => void
 
 	// Setter actions
@@ -76,6 +156,17 @@ type OpencodeActions = {
 
 /**
  * Factory for empty DirectoryState
+ *
+ * Creates initial state for a new directory with empty arrays and objects.
+ * Used by `initDirectory` and `handleSSEEvent` when auto-creating directories.
+ *
+ * @returns DirectoryState with all fields initialized to empty/default values
+ *
+ * @remarks
+ * Key fields:
+ * - `sessionStatus`: Map of sessionId -> SessionStatus ("running" | "completed")
+ * - `sessionLastActivity`: Map of sessionId -> timestamp for sorting
+ * - `sessions`, `messages`, `parts`: Sorted arrays for O(log n) binary search
  */
 const createEmptyDirectoryState = (): DirectoryState => ({
 	ready: false,
@@ -104,7 +195,14 @@ export const useOpencodeStore = create<OpencodeState & OpencodeActions>()(
 		// Initial state
 		directories: {},
 
-		// Initialize directory with empty state
+		/**
+		 * Initialize directory with empty state
+		 *
+		 * Idempotent - if directory already exists, does nothing.
+		 * Creates a new DirectoryState with empty sessions, messages, etc.
+		 *
+		 * @param directory - Project directory path
+		 */
 		initDirectory: (directory) => {
 			set((state) => {
 				if (!state.directories[directory]) {
@@ -113,7 +211,22 @@ export const useOpencodeStore = create<OpencodeState & OpencodeActions>()(
 			})
 		},
 
-		// Central event dispatcher for SSE events
+		/**
+		 * Central event dispatcher for SSE events
+		 *
+		 * Routes events to appropriate handlers based on event type.
+		 * Auto-creates directory if it doesn't exist (ensures events for any
+		 * directory are processed, not dropped).
+		 *
+		 * Supported events:
+		 * - session.created, session.updated, session.status, session.deleted
+		 * - message.updated, message.removed
+		 * - message.part.updated, message.part.removed
+		 * - todo.updated
+		 *
+		 * @param directory - Project directory path
+		 * @param event - Event object with type and properties
+		 */
 		handleEvent: (directory, event) => {
 			set((state) => {
 				// Auto-create directory if not exists
@@ -150,8 +263,27 @@ export const useOpencodeStore = create<OpencodeState & OpencodeActions>()(
 					}
 
 					case "session.status": {
+						/**
+						 * Handle session status updates
+						 *
+						 * Backend can send status in different formats:
+						 * - { type: "busy" | "retry" | "idle" } from /session/status endpoint
+						 * - { running: boolean } from SSE events
+						 * - string literal (for tests or future API changes)
+						 *
+						 * Normalizes all formats to SessionStatus ("running" | "completed").
+						 * Also tracks last activity time for sorting sessions by recency.
+						 */
 						// Backend sends { type: "busy" | "retry" | "idle" } or SSE sends { running: boolean }
 						const statusPayload = event.properties.status
+						const sessionID = event.properties.sessionID
+
+						console.debug("[store] session.status received:", {
+							sessionID,
+							statusPayload,
+							directory,
+						})
+
 						let status: SessionStatus = "completed"
 
 						if (typeof statusPayload === "object" && statusPayload !== null) {
@@ -164,15 +296,24 @@ export const useOpencodeStore = create<OpencodeState & OpencodeActions>()(
 							} else if ("running" in statusPayload) {
 								// Handle { running: boolean } format from SSE
 								status = statusPayload.running ? "running" : "completed"
+							} else {
+								console.warn("[store] session.status unexpected format:", statusPayload)
 							}
 						} else if (typeof statusPayload === "string") {
 							// Handle string format (for tests or future API changes)
 							status = statusPayload as SessionStatus
+						} else {
+							console.warn("[store] session.status unexpected format:", statusPayload)
 						}
 
-						dir.sessionStatus[event.properties.sessionID] = status
+						console.debug("[store] session.status normalized:", {
+							sessionID,
+							status,
+						})
+
+						dir.sessionStatus[sessionID] = status
 						// Track last activity time for sorting
-						dir.sessionLastActivity[event.properties.sessionID] = Date.now()
+						dir.sessionLastActivity[sessionID] = Date.now()
 						break
 					}
 
@@ -222,48 +363,32 @@ export const useOpencodeStore = create<OpencodeState & OpencodeActions>()(
 						}
 
 						// Extract token usage if available
-						// Try message.model.limits first, then fall back to cached limits by modelID
+						// ONLY use cached limits from store (populated by bootstrap)
 						if (message.tokens) {
 							const tokens = message.tokens
-							let limits: { context: number; output: number } | undefined
 
-							// First try: message.model.limits (if backend sends it)
-							if (message.model?.limits) {
-								limits = message.model.limits
-								// Cache for future use
-								if (message.model.name) {
-									dir.modelLimits[message.model.name] = {
-										context: limits.context,
-										output: limits.output,
-									}
-								}
-							}
-							// Second try: cached limits by modelID (backend sends modelID as string)
-							else {
-								const modelID = message.modelID as string | undefined
-								if (modelID && dir.modelLimits[modelID]) {
-									limits = dir.modelLimits[modelID]
-								}
-							}
+							// Get limits from store cache OR fallback to DEFAULT_MODEL_LIMITS
+							const modelID = message.modelID as string | undefined
+							const limits = modelID
+								? (dir.modelLimits[modelID] ?? DEFAULT_MODEL_LIMITS)
+								: DEFAULT_MODEL_LIMITS
 
-							// Calculate context usage if we have limits
-							if (limits) {
-								const used = tokens.input + (tokens.cache?.read || 0) + tokens.output
-								const usableContext = limits.context - Math.min(limits.output, 32000)
-								const percentage = Math.round((used / usableContext) * 100)
+							// Calculate context usage with effectiveLimits
+							const used = tokens.input + (tokens.cache?.read || 0) + tokens.output
+							const usableContext = limits.context - Math.min(limits.output, 32000)
+							const percentage = Math.round((used / usableContext) * 100)
 
-								dir.contextUsage[sessionID] = {
-									used,
-									limit: limits.context,
-									percentage,
-									isNearLimit: percentage >= 80,
-									tokens: {
-										input: tokens.input,
-										output: tokens.output,
-										cached: tokens.cache?.read || 0,
-									},
-									lastUpdated: Date.now(),
-								}
+							dir.contextUsage[sessionID] = {
+								used,
+								limit: limits.context,
+								percentage,
+								isNearLimit: percentage >= 80,
+								tokens: {
+									input: tokens.input,
+									output: tokens.output,
+									cached: tokens.cache?.read || 0,
+								},
+								lastUpdated: Date.now(),
 							}
 						}
 
@@ -652,12 +777,18 @@ export const useOpencodeStore = create<OpencodeState & OpencodeActions>()(
 		/**
 		 * Get model limits by model ID
 		 *
+		 * Falls back to DEFAULT_MODEL_LIMITS if model not found.
+		 * This ensures context usage always shows a value, even if:
+		 * - Bootstrap failed to fetch limits
+		 * - Model is new and not yet cached
+		 * - Network issues prevented limit loading
+		 *
 		 * @param directory - Project directory path
 		 * @param modelID - Model ID (e.g., "claude-opus-4-5")
-		 * @returns Model limits or undefined if not cached
+		 * @returns Model limits (from cache or default fallback)
 		 */
 		getModelLimits: (directory, modelID) => {
-			return get().directories[directory]?.modelLimits[modelID]
+			return get().directories[directory]?.modelLimits[modelID] ?? DEFAULT_MODEL_LIMITS
 		},
 
 		// ═══════════════════════════════════════════════════════════════
@@ -668,26 +799,39 @@ export const useOpencodeStore = create<OpencodeState & OpencodeActions>()(
 		 * Handle SSE GlobalEvent - wrapper for handleEvent
 		 *
 		 * This is the primary integration point for SSE events.
-		 * SSEProvider calls this method when events arrive from the event stream.
+		 * SSEProvider/useSSEEvents calls this method when events arrive from the event stream.
 		 * It extracts directory and payload from GlobalEvent and routes to handleEvent.
+		 *
+		 * **CRITICAL**: Auto-initializes directory if it doesn't exist.
+		 * This ensures SSE events for ANY directory are processed, not dropped.
+		 * Enables cross-directory updates (e.g., project list showing status
+		 * updates for multiple OpenCode instances on different ports).
+		 *
+		 * **Data Flow**:
+		 * 1. SSE event arrives from multiServerSSE
+		 * 2. useSSEEvents calls this method with GlobalEvent
+		 * 3. Directory is auto-created if needed (via ensureDirectory logic)
+		 * 4. Event is routed to handleEvent for processing
+		 * 5. Store updates trigger component re-renders via selectors
 		 *
 		 * @param event - GlobalEvent from SSE stream (contains directory and payload)
 		 *
-		 * @example Basic usage
+		 * @example Basic usage (from useSSEEvents)
 		 * ```tsx
-		 * const { subscribe } = useSSE()
-		 *
-		 * useEffect(() => {
-		 *   const unsubscribe = subscribe("session.created", (globalEvent) => {
-		 *     store.handleSSEEvent(globalEvent)
-		 *   })
-		 *   return unsubscribe
-		 * }, [subscribe])
+		 * multiServerSSE.onEvent((event) => {
+		 *   // Process events for ALL directories - store auto-initializes
+		 *   useOpencodeStore.getState().handleSSEEvent(event)
+		 * })
 		 * ```
 		 */
 		handleSSEEvent: (event) => {
-			// Auto-initialize directory if it doesn't exist
-			// This ensures SSE events for any directory are processed, not dropped
+			/**
+			 * Auto-initialize directory if it doesn't exist
+			 *
+			 * This is the "ensureDirectory" pattern - guarantees directory state exists
+			 * before processing events. Without this, events for new directories would
+			 * be silently dropped.
+			 */
 			if (!get().directories[event.directory]) {
 				set((state) => {
 					state.directories[event.directory] = createEmptyDirectoryState()

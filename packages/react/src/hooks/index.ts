@@ -37,6 +37,15 @@ export { useCommands, type UseCommandsOptions } from "./use-commands"
 
 // Utilities
 export { useFileSearch } from "./use-file-search"
+export {
+	useMultiDirectorySessions,
+	type SessionDisplay,
+} from "./use-multi-directory-sessions"
+export {
+	useMultiDirectoryStatus,
+	type UseMultiDirectoryStatusReturn,
+} from "./use-multi-directory-status"
+export { useSSEState } from "./use-sse-state"
 
 // === Internal Hooks (Re-exported for backward compatibility) ===
 // @internal - These are not part of the public API and may change without notice.
