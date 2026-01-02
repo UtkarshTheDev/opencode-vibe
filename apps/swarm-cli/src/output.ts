@@ -258,7 +258,13 @@ export class StreamingAggregator {
 	 */
 	process(event: SSEEventInfo): AggregatorResult | null {
 		const { type, properties } = event
-		const sessionID = properties.sessionID as string | undefined
+		// For message.part.updated, sessionID is nested in properties.part
+		const sessionID =
+			type === "message.part.updated"
+				? ((properties.part as Record<string, unknown> | undefined)?.sessionID as
+						| string
+						| undefined)
+				: (properties.sessionID as string | undefined)
 
 		if (!sessionID) {
 			// No sessionID, can't aggregate - format normally

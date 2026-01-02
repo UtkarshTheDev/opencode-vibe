@@ -158,7 +158,16 @@ describe("createSseSource", () => {
 				directory: "/test/project",
 				payload: {
 					type: "session.created",
-					properties: { sessionID: "test-123" },
+					properties: {
+						info: {
+							id: "test-123",
+							title: "Test Session",
+							directory: "/test/project",
+							projectID: "test-project",
+							version: "1",
+							time: { created: Date.now(), updated: Date.now() },
+						},
+					},
 				},
 			}
 			mockSSE.emitEvent(globalEvent)
@@ -194,18 +203,19 @@ describe("createSseSource", () => {
 
 			await new Promise((resolve) => setTimeout(resolve, 10))
 
-			// Emit multiple events
+			// Emit multiple events using valid event types
+			// Note: Using 'as any' for test fixtures - SDK event types are strict
 			mockSSE.emitEvent({
 				directory: "/test",
-				payload: { type: "event.1", properties: {} },
+				payload: { type: "session.updated", properties: { info: {} } } as any,
 			})
 			mockSSE.emitEvent({
 				directory: "/test",
-				payload: { type: "event.2", properties: {} },
+				payload: { type: "session.idle", properties: { sessionID: "test-1" } } as any,
 			})
 			mockSSE.emitEvent({
 				directory: "/test",
-				payload: { type: "event.3", properties: {} },
+				payload: { type: "session.compacted", properties: { sessionID: "test-2" } } as any,
 			})
 
 			await new Promise((resolve) => setTimeout(resolve, 10))
@@ -255,12 +265,11 @@ describe("createSseSource", () => {
 			const globalEvent: GlobalEvent = {
 				directory: "/my/project",
 				payload: {
-					type: "message.created",
+					type: "message.updated",
 					properties: {
-						messageID: "msg-456",
-						content: "Hello world",
+						info: {} as any,
 					},
-				},
+				} as any,
 			}
 			mockSSE.emitEvent(globalEvent)
 
@@ -302,7 +311,7 @@ describe("createSseSource", () => {
 			// Emit event to complete the stream
 			mockSSE.emitEvent({
 				directory: "/test",
-				payload: { type: "test", properties: {} },
+				payload: { type: "session.idle", properties: { sessionID: "test" } } as any,
 			})
 
 			await new Promise((resolve) => setTimeout(resolve, 10))

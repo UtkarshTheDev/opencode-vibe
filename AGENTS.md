@@ -391,6 +391,34 @@ export const Task = React.memo(TaskComponent, (prev, next) => {
 
 
 
+### SDK Types (Non-Negotiable)
+
+**ALWAYS use official `@opencode-ai/sdk` types.** Never hand-roll domain types.
+
+```typescript
+// ✅ CORRECT - Import from sdk.ts re-export layer
+import type { Session, Message, Part } from "@opencode-vibe/core/types/sdk"
+import type { Event, EventMessagePartUpdated } from "@opencode-vibe/core/types/sdk"
+
+// ❌ WRONG - Hand-rolled types cause drift
+interface Session { id: string; ... }  // DON'T DO THIS
+```
+
+**Key files:**
+- `packages/core/src/types/sdk.ts` - Central re-export of SDK types
+- `packages/core/src/types/domain.ts` - Re-exports SDK types for backwards compat
+- `packages/core/src/types/events.ts` - Re-exports SDK event types
+
+**When SDK updates:**
+1. Update `@opencode-ai/sdk` version in `packages/core/package.json`
+2. Run `bun install`
+3. Run `bun run typecheck` - fix any breaking changes
+4. Update `sdk.ts` if new types need re-exporting
+
+**SDK Event Shapes:**
+- `EventMessagePartUpdated` has `{ type, properties: { part: Part } }` - part is NESTED
+- Other events have flat `{ type, properties: { sessionID, ... } }`
+
 ### SDK Gotchas
 
 - **No timeout on requests** - AI operations can run for minutes. `req.timeout = false` in client factory.

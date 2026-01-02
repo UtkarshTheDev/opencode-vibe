@@ -34,7 +34,8 @@
 ║                        IMPLEMENTATION PROGRESS                            ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║  Phase 1: O11y Foundation                              ██████████ 100%   ║
-║  Phase 2: Advanced O11y + Safety                       ████████░░  80%   ║
+║  Phase 2: Advanced O11y + Safety                       ██████████ 100%   ║
+║  Phase 2.5: QoL Improvements                           ██████████ 100%   ║
 ║  Phase 3: Production Stack                             ░░░░░░░░░░   0%   ║
 ║  Quick Wins                                            ██████████ 100%   ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
@@ -55,6 +56,10 @@
 | **Phase 2: Histograms** | ✅ DONE | eventProcessingSeconds, swarmDbPollSeconds, cursorQuerySeconds |
 | **Phase 2: acquireRelease for SSE** | ✅ DONE | sse.ts:214 uses Effect.acquireRelease |
 | **Phase 2: PubSub for n+1 subscribers** | ✅ DONE | pubsub.ts with bounded(32) backpressure |
+| **P2: SSEService Extraction** | ✅ DONE | Effect.Service + Layer.scoped pattern (cursor-store.ts style) |
+| **P2: Scope-based Fiber Management** | ✅ DONE | WorldSSE.scope field, auto-cleanup on stop() |
+| **P2: Schedule.repeat for Discovery** | ✅ DONE | Replaced while+sleep with Schedule.fixed in discovery loop |
+| **P2: Stream.asyncScoped (merged-stream)** | ✅ DONE | acquireRelease for async iterator lifecycle |
 
 ### Remaining Work
 
@@ -63,10 +68,7 @@
 | **Phase 3: OTel Integration** | ❌ TODO | P3 | 4-5 days |
 | **Phase 3: Grafana Dashboards** | ❌ TODO | P3 | 3-4 days |
 | **Phase 3: Alerting** | ❌ TODO | P3 | 2-3 days |
-| **SSEService Extraction** | ❌ TODO | P2 | 1 day |
 | **WorldStoreService Extraction** | ❌ TODO | P3 | 4 hours |
-| **Scope-based Fiber Management** | ❌ TODO | P2 | 2 hours |
-| **Stream.asyncScoped** | ❌ TODO | P3 | 4 hours |
 | **Unify Atom Definitions** | ❌ TODO | P3 | 2 hours |
 
 ---
@@ -390,14 +392,14 @@ const connectionEffect = Effect.retry(connectEffect, sseRetrySchedule)
 | **P1** | **acquireRelease for SSE** (connection safety) | 2 days | Low | High | ✅ DONE |
 | **P1** | **PubSub for n+1 subscribers** (fan-out + backpressure) | 1 day | Medium | High | ✅ DONE |
 
-### Quality of Life (NEXT UP)
+### Quality of Life (COMPLETED ✅)
 
 | Priority | Recommendation | Effort | Risk | Impact | Status |
 |----------|----------------|--------|------|--------|--------|
-| **P2** | **SSEService extraction** | 1 day | Medium | Medium | ❌ TODO |
-| **P2** | **Scope-based fiber management** | 2 hours | Low | Medium | ❌ TODO |
-| **P2** | **Schedule.repeat for discovery** | 30 mins | Low | Low | ❌ TODO |
-| **P2** | **Stream.asyncScoped for async iterator** | 4 hours | Low | Medium | ❌ TODO |
+| **P2** | **SSEService extraction** | 1 day | Medium | Medium | ✅ DONE |
+| **P2** | **Scope-based fiber management** | 2 hours | Low | Medium | ✅ DONE |
+| **P2** | **Schedule.repeat for discovery** | 30 mins | Low | Low | ✅ DONE |
+| **P2** | **Stream.asyncScoped for async iterator** | 4 hours | Low | Medium | ✅ DONE |
 
 ### Future Work (DEFER)
 
@@ -551,16 +553,17 @@ const connectionEffect = Effect.retry(connectEffect, sseRetrySchedule)
 
 ### Optional Improvements (Post-MVP)
 
-| Task | Effort | Risk | When to Do |
-|------|--------|------|-----------|
-| SSEService extraction | 1 day | Medium | After Phase 2 |
-| WorldStoreService | 4 hours | Medium | After SSEService |
-| Scope-based fiber mgmt | 2 hours | Low | After SSEService |
-| Stream.asyncScoped | 4 hours | Low | After Phase 2 |
-| Unify stream files | 1 hour | Low | Anytime |
-| Delete sse-bridge.ts | 15 mins | Low | Anytime |
-| Unify atom definitions | 2 hours | Low | Anytime |
-| PubSub migration | **MOVED TO PHASE 2** | Medium | After O11y foundation |
+| Task | Effort | Risk | When to Do | Status |
+|------|--------|------|-----------|--------|
+| SSEService extraction | 1 day | Medium | After Phase 2 | ✅ DONE |
+| WorldStoreService | 4 hours | Medium | After SSEService | ❌ TODO |
+| Scope-based fiber mgmt | 2 hours | Low | After SSEService | ✅ DONE |
+| Stream.asyncScoped | 4 hours | Low | After Phase 2 | ✅ DONE |
+| Unify stream files | 1 hour | Low | Anytime | ✅ DONE |
+| Delete sse-bridge.ts | 15 mins | Low | Anytime | ✅ DONE |
+| Unify atom definitions | 2 hours | Low | Anytime | ❌ TODO |
+| PubSub migration | **MOVED TO PHASE 2** | Medium | After O11y foundation | ✅ DONE |
+| Schedule.repeat discovery | 30 mins | Low | Anytime | ✅ DONE |
 
 ### Risk Analysis
 

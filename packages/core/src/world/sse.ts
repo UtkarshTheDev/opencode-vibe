@@ -356,40 +356,41 @@ export class WorldSSE {
 	 * Start the discovery loop
 	 */
 	private startDiscoveryLoop(): void {
-		const discoveryEffect = Effect.gen(this, function* () {
-			while (this.running) {
-				// Discover servers
-				const servers = yield* discoverServers().pipe(
-					Effect.catchAll(() => Effect.succeed([] as DiscoveredServer[])),
-				)
+		const discoverAndUpdate = Effect.gen(this, function* () {
+			// Discover servers
+			const servers = yield* discoverServers().pipe(
+				Effect.catchAll(() => Effect.succeed([] as DiscoveredServer[])),
+			)
 
-				// Connect to new servers
-				const activePorts = new Set(servers.map((s) => s.port))
+			// Connect to new servers
+			const activePorts = new Set(servers.map((s) => s.port))
 
-				for (const server of servers) {
-					if (!this.connectedPorts.has(server.port)) {
-						this.connectToServer(server.port)
-					}
+			for (const server of servers) {
+				if (!this.connectedPorts.has(server.port)) {
+					this.connectToServer(server.port)
 				}
+			}
 
-				// Disconnect from dead servers
-				for (const port of this.connectedPorts) {
-					if (!activePorts.has(port)) {
-						this.disconnectFromServer(port)
-					}
+			// Disconnect from dead servers
+			for (const port of this.connectedPorts) {
+				if (!activePorts.has(port)) {
+					this.disconnectFromServer(port)
 				}
+			}
 
-				// Update connection status
-				if (this.connectedPorts.size > 0) {
-					this.store.setConnectionStatus("connected")
-				} else if (servers.length === 0) {
-					this.store.setConnectionStatus("disconnected")
-				}
-
-				// Wait before next discovery
-				yield* Effect.sleep(this.config.discoveryIntervalMs)
+			// Update connection status
+			if (this.connectedPorts.size > 0) {
+				this.store.setConnectionStatus("connected")
+			} else if (servers.length === 0) {
+				this.store.setConnectionStatus("disconnected")
 			}
 		})
+
+		const discoveryEffect = discoverAndUpdate.pipe(
+			Effect.repeat(Schedule.fixed(this.config.discoveryIntervalMs)),
+			Effect.asVoid,
+			Effect.interruptible,
+		)
 
 		this.discoveryFiber = Effect.runFork(discoveryEffect)
 	}

@@ -127,9 +127,11 @@ describe("StreamingAggregator", () => {
 		const event: SSEEventInfo = {
 			type: "message.part.updated",
 			properties: {
-				sessionID: "ses_123",
-				messageID: "msg_456",
-				id: "part_789",
+				part: {
+					sessionID: "ses_123",
+					messageID: "msg_456",
+					id: "part_789",
+				},
 			},
 		}
 
@@ -153,9 +155,11 @@ describe("StreamingAggregator", () => {
 			const event: SSEEventInfo = {
 				type: "message.part.updated",
 				properties: {
-					sessionID,
-					messageID,
-					id: `part_${i}`,
+					part: {
+						sessionID,
+						messageID,
+						id: `part_${i}`,
+					},
 				},
 			}
 			const result = aggregator.process(event)
@@ -179,14 +183,14 @@ describe("StreamingAggregator", () => {
 		// First event
 		aggregator.process({
 			type: "message.part.updated",
-			properties: { sessionID, messageID, id: "part_1" },
+			properties: { part: { sessionID, messageID, id: "part_1" } },
 		})
 
 		// More events immediately
 		for (let i = 2; i <= 10; i++) {
 			aggregator.process({
 				type: "message.part.updated",
-				properties: { sessionID, messageID, id: `part_${i}` },
+				properties: { part: { sessionID, messageID, id: `part_${i}` } },
 			})
 		}
 
@@ -196,7 +200,7 @@ describe("StreamingAggregator", () => {
 		// Next event should trigger summary
 		const result = aggregator.process({
 			type: "message.part.updated",
-			properties: { sessionID, messageID, id: "part_11" },
+			properties: { part: { sessionID, messageID, id: "part_11" } },
 		})
 
 		expect(result).toBeDefined()
@@ -213,7 +217,7 @@ describe("StreamingAggregator", () => {
 		for (let i = 1; i <= 5; i++) {
 			aggregator.process({
 				type: "message.part.updated",
-				properties: { sessionID, messageID: "msg_456", id: `part_${i}` },
+				properties: { part: { sessionID, messageID: "msg_456", id: `part_${i}` } },
 			})
 		}
 
@@ -238,7 +242,7 @@ describe("StreamingAggregator", () => {
 		for (let i = 1; i <= 5; i++) {
 			aggregator.process({
 				type: "message.part.updated",
-				properties: { sessionID, messageID: "msg_456", id: `part_${i}` },
+				properties: { part: { sessionID, messageID: "msg_456", id: `part_${i}` } },
 			})
 		}
 
@@ -260,13 +264,13 @@ describe("StreamingAggregator", () => {
 		// Session 1
 		aggregator.process({
 			type: "message.part.updated",
-			properties: { sessionID: "ses_1", messageID: "msg_1", id: "part_1" },
+			properties: { part: { sessionID: "ses_1", messageID: "msg_1", id: "part_1" } },
 		})
 
 		// Session 2
 		aggregator.process({
 			type: "message.part.updated",
-			properties: { sessionID: "ses_2", messageID: "msg_2", id: "part_1" },
+			properties: { part: { sessionID: "ses_2", messageID: "msg_2", id: "part_1" } },
 		})
 
 		// Both should be tracked separately
@@ -283,7 +287,7 @@ describe("StreamingAggregator", () => {
 		for (let i = 1; i <= 47; i++) {
 			aggregator.process({
 				type: "message.part.updated",
-				properties: { sessionID, messageID: "msg_456", id: `part_${i}` },
+				properties: { part: { sessionID, messageID: "msg_456", id: `part_${i}` } },
 			})
 		}
 
@@ -306,7 +310,7 @@ describe("StreamingAggregator", () => {
 		for (let i = 1; i <= 12; i++) {
 			aggregator.process({
 				type: "message.part.updated",
-				properties: { sessionID, messageID: "msg_456", id: `part_${i}` },
+				properties: { part: { sessionID, messageID: "msg_456", id: `part_${i}` } },
 			})
 		}
 
@@ -329,7 +333,7 @@ describe("StreamingAggregator", () => {
 		for (let i = 1; i <= 5; i++) {
 			aggregator.process({
 				type: "message.part.updated",
-				properties: { sessionID, messageID: "msg_456", id: `part_${i}` },
+				properties: { part: { sessionID, messageID: "msg_456", id: `part_${i}` } },
 			})
 		}
 

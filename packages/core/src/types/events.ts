@@ -7,32 +7,14 @@
  * react/store, and imported from SDK - now consolidated here.
  */
 
-/**
- * Global SSE event structure from OpenCode backend
- *
- * @example
- * ```typescript
- * {
- *   directory: "/Users/joel/Code/my-project",
- *   payload: {
- *     type: "session.status",
- *     properties: { sessionID: "abc123", status: "running" }
- *   }
- * }
- * ```
- */
-export interface GlobalEvent {
-	directory: string
-	payload: {
-		type: string
-		properties: Record<string, unknown>
-	}
-}
+// Re-export SDK event types (source of truth)
+export type { GlobalEvent } from "./sdk.js"
 
 /**
- * Session execution status
+ * Backward-compatible SessionStatus (string union)
+ * SDK uses object discriminated union - keep compat type until migration
  */
-export type SessionStatus = "pending" | "running" | "completed" | "error"
+export type SessionStatus = "pending" | "running" | "completed" | "error" | "idle"
 
 /**
  * Discovered OpenCode server instance

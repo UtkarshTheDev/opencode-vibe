@@ -1,34 +1,49 @@
 /**
  * Domain types for OpenCode entities
  *
- * These types match the OpenCode API response shapes.
+ * Provides backward-compatible loose types while transitioning to strict SDK types.
+ * New code should use SDK types directly from ./sdk.ts
  */
 
+// Import SDK types for reference
+import type { Session as SDKSession, Message as SDKMessage, Part as SDKPart } from "./sdk.js"
+
 /**
- * Session type
+ * Backward-compatible Session type (loose)
+ * For strict typing, use SDKSession from ./sdk.ts
  */
 export type Session = {
 	id: string
 	title: string
 	directory: string
 	parentID?: string
+	projectID?: string
+	version?: string | number // SDK uses string, old code used number
 	time: {
 		created: number
 		updated: number
 		archived?: number
 	}
+	summary?: {
+		additions: number
+		deletions: number
+		files: number
+		diffs?: unknown[]
+	}
+	[key: string]: unknown
 }
 
 /**
- * Message type matching OpenCode API
+ * Backward-compatible Message type (loose)
+ * For strict typing, use SDKMessage from ./sdk.ts
  */
 export type Message = {
 	id: string
 	sessionID: string
 	role: string
-	parentID?: string // Assistant messages have parentID pointing to user message
+	parentID?: string
 	time?: { created: number; completed?: number }
-	finish?: string // "stop", "tool-calls", etc. - only set when complete
+	finish?: string
 	tokens?: {
 		input: number
 		output: number
@@ -38,29 +53,39 @@ export type Message = {
 			write: number
 		}
 	}
-	agent?: string // Agent name (e.g., "compaction")
+	agent?: string
 	model?: {
-		name: string
+		name?: string
+		providerID?: string
+		modelID?: string
 		limits?: {
 			context: number
 			output: number
 		}
 	}
-	[key: string]: unknown // Allow additional fields
+	summary?: unknown
+	error?: unknown
+	system?: string
+	tools?: unknown
+	mode?: string
+	providerID?: string
+	modelID?: string
+	[key: string]: unknown
 }
 
 /**
- * Part type for streaming message content
+ * Backward-compatible Part type (loose)
+ * For strict typing, use SDKPart from ./sdk.ts
  *
- * TODO: Replace with SDK types from @opencode-ai/sdk (see cell opencode-next--xts0a-mjx932w6bvg)
+ * sessionID made optional for test compatibility (real parts always have it)
  */
 export type Part = {
 	id: string
-	sessionID: string // All parts have sessionID from the backend
+	sessionID?: string // Optional for test mocks
 	messageID: string
 	type: string
 	content?: string
-	text?: string // TextPart uses text, not content
+	text?: string
 	tool?: string
 	state?: {
 		status?: string
@@ -70,8 +95,14 @@ export type Part = {
 		start: number
 		end?: number
 	}
-	[key: string]: unknown // Allow additional fields
+	[key: string]: unknown
 }
+
+/**
+ * Backward-compatible SessionStatus type (loose string union)
+ * For strict typing, use SessionStatus from ./sdk.ts (object discriminated union)
+ */
+export type SessionStatusCompat = "pending" | "running" | "completed" | "error" | "idle"
 
 /**
  * Session with computed status
@@ -79,5 +110,5 @@ export type Part = {
  */
 export interface SessionWithStatus {
 	session: Session
-	status: "pending" | "running" | "completed" | "error"
+	status: SessionStatusCompat
 }
