@@ -57,3 +57,11 @@ export {
 
 // Derived world atom (array-based for enrichment)
 export { worldAtom } from "./derived.js"
+
+// Event sources (extensible event source pattern)
+export { createSwarmDbSource } from "./event-source.js"
+export type { EventSource, SourceEvent } from "./event-source.js"
+
+// Merged stream (combines multiple event sources)
+export { createMergedWorldStream } from "./merged-stream.js"
+export type { MergedStreamConfig, MergedStreamHandle } from "./merged-stream.js"

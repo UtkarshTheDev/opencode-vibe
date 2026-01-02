@@ -10,6 +10,7 @@
 		"build": "bun build src/main.ts --outfile dist/main.js --target bun",
 		"dev": "bun src/main.ts",
 		"dev:mock": "bun mock-server.ts",
+		"spike:stream": "bun src/spike-merged-stream.ts",
 		"start": "bun src/main.ts",
 		"type-check": "tsc --noEmit"
 	},
