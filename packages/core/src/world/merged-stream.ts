@@ -264,11 +264,9 @@ export function createMergedWorldStream(config: MergedStreamConfig = {}): Merged
 								: { raw: event.data }
 
 						onEvent({
+							source: event.source, // Top-level source for formatSSEEvent
 							type: event.type,
-							properties: {
-								...properties,
-								source: event.source, // Include source tag for CLI display
-							},
+							properties,
 						})
 					}
 				}),
