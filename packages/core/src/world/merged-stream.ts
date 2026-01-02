@@ -21,7 +21,6 @@ import type { EventSource, SourceEvent } from "./event-source.js"
 import type { WorldStreamConfig, WorldStreamHandle, WorldState } from "./types.js"
 import { WorldStore } from "./atoms.js"
 import { WorldSSE } from "./sse.js"
-import { discoverServers } from "../discovery/server-discovery.js"
 import type { Message, Part, Session } from "../types/domain.js"
 import type { SessionStatus } from "../types/events.js"
 
@@ -136,44 +135,15 @@ export function createMergedWorldStream(config: MergedStreamConfig = {}): Merged
 
 	const store = new WorldStore()
 
-	// Create SSE instance (will be started after discovery completes)
-	let sse: WorldSSE | null = null
-
-	// If baseUrl provided, start immediately
-	if (baseUrl) {
-		sse = new WorldSSE(store, {
-			serverUrl: baseUrl,
-			autoReconnect,
-			onEvent,
-		})
-		sse.start()
-	} else {
-		// No baseUrl - run discovery first
-		store.setConnectionStatus("connecting")
-		discoverServers()
-			.then((servers) => {
-				if (servers.length === 0) {
-					// No servers found
-					store.setConnectionStatus("error")
-					return
-				}
-				// Use first server (sorted by port in discovery)
-				const firstServer = servers[0]
-				const discoveredUrl = `http://127.0.0.1:${firstServer.port}`
-
-				// Create and start SSE with discovered URL
-				sse = new WorldSSE(store, {
-					serverUrl: discoveredUrl,
-					autoReconnect,
-					onEvent,
-				})
-				sse.start()
-			})
-			.catch(() => {
-				// Discovery failed
-				store.setConnectionStatus("error")
-			})
-	}
+	// Create WorldSSE instance
+	// If baseUrl provided, connect to that specific server
+	// Otherwise, let WorldSSE use its built-in discovery loop to find and connect to ALL servers
+	const sse = new WorldSSE(store, {
+		serverUrl: baseUrl, // undefined = use discovery loop for all servers
+		autoReconnect,
+		onEvent,
+	})
+	sse.start()
 
 	/**
 	 * Create merged event stream from all available sources
