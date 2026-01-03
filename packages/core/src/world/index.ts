@@ -21,10 +21,6 @@ export type { DiscoveredServer } from "../discovery/server-discovery.js"
 export { WorldSSE, createWorldSSE, connectToSSE, SSEService, SSEServiceLive } from "./sse.js"
 export type { SSEEvent, WorldSSEConfig, SSEServiceInterface } from "./sse.js"
 
-// WorldStore (atom-based state management)
-export { WorldStore, WorldStoreService, WorldStoreServiceLive } from "./atoms.js"
-export type { WorldStoreServiceInterface } from "./atoms.js"
-
 // Enriched types
 export type { Instance, EnrichedProject, EnrichedMessage, EnrichedSession } from "./types.js"
 
@@ -41,7 +37,8 @@ export type { CursorStoreService } from "./cursor-store.js"
 // AtomRuntime with API services
 export { apiRuntimeAtom, MessageService, StatusService } from "./runtime.js"
 
-// effect-atom based state (Map-based for O(1) SSE updates)
+// effect-atom based state primitives (Map-based for O(1) SSE updates)
+// NOTE: WorldStore class is internal to atoms.js - consumers use these atoms directly
 export {
 	sessionsAtom,
 	messagesAtom,
