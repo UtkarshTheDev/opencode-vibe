@@ -18,14 +18,14 @@ Next.js 16 rebuild of the OpenCode web application. Real-time chat UI with strea
 2. **Start the Web UI:**
    Clone this repo, install, and run:
    ```bash
-   git clone https://github.com/opencode-ai/opencode-vibe.git
+   git clone https://github.com/joelhooks/opencode-vibe.git
    cd opencode-vibe
    bun install
    bun dev
    ```
 
 3. **Open Browser:**
-   Go to **http://localhost:8423**
+   Go to `http://localhost:8423`
 
 ---
 
